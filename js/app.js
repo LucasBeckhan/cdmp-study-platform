@@ -67,17 +67,19 @@ function updateNav() {
   $$("#nav a").forEach((a) => {
     const v = a.dataset.view;
     if (v === "hub") { a.href = "#/hub"; return; }
+    if (v === "wrongbook") { a.href = "#/wrongbook"; return; }
     if (CUR) a.href = "#/" + CUR + "/" + v;
   });
 }
 
 /* ---------------- 路由 ---------------- */
-const VIEW_TITLES = { home: "学习首页", plan: "学习计划", knowledge: "知识体系", quiz: "章节刷题", exam: "模拟考试", resources: "资料纳管", tips: "备考攻略" };
+const VIEW_TITLES = { home: "学习首页", plan: "学习计划", knowledge: "知识体系", flashcards: "闪卡记忆", quiz: "章节刷题", exam: "模拟考试", resources: "资料纳管", tips: "备考攻略" };
 const VIEWS = Object.keys(VIEW_TITLES);
 function router() {
   if (S && !$("#gatePwd")) closeModal(); // 路由切换时关闭残留的临时弹窗（门禁除外）
   const h = location.hash.replace(/^#\/?/, "");
   if (!h || h === "hub" || h === "home") return renderHub();
+  if (h === "wrongbook") return renderWrongBook();
   const parts = h.split("/").filter(Boolean);
   const tid = parts[0];
   if (!TRACKS()[tid]) return renderHub();
@@ -88,7 +90,7 @@ function router() {
   $("#topbarTitle").textContent = `${T.meta.name} · ${VIEW_TITLES[view]}`;
   $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
   closeSidebar();
-  const R = { home: vHome, plan: vPlan, knowledge: vKnowledge, quiz: vQuiz, exam: vExam, resources: vResources, tips: vTips };
+  const R = { home: vHome, plan: vPlan, knowledge: vKnowledge, flashcards: vFlashcards, quiz: vQuiz, exam: vExam, resources: vResources, tips: vTips };
   if (view === "knowledge" && arg) vKDetail($("#view"), arg);
   else R[view]($("#view"), arg);
   renderTopbar(); renderFoot();
@@ -182,6 +184,7 @@ function renderHub() {
       <span class="chip">✎ 累计刷题 ${allDone}</span>
       <span class="chip">⚡ 待消灭错题 ${allWrong}</span>
       <span class="chip">◎ 模考 ${allExams} 次</span>
+      <a class="chip chip-hi" href="#/wrongbook">⚡ 错题中心 ${allWrong}</a>
     </div>
   </div>
   <div class="grid-2" style="margin-top:18px">
@@ -227,6 +230,17 @@ function vHome(view) {
   const planTotal = (T.plan && T.plan.totalDays) || 30;
   const EXM = T.meta.exam;
   const streakN = Core.computeStreak((ST && ST.activity) || {}, new Date());
+  const todayCnt = Core.todayCount((ST && ST.activity) || {}, new Date());
+  const goal = (S.settings && S.settings.dailyGoal) || 20;
+  const achvAll = Core.achievementsFor(T, ST, new Date());
+  const achvEarned = achvAll.filter((a) => a.done);
+  const freshAchv = achvEarned.filter((a) => !(ST.achievementsSeen || []).includes(a.id));
+  if (freshAchv.length) {
+    const last = freshAchv[freshAchv.length - 1];
+    toast(`${last.icon} 成就解锁：${last.name}`);
+    ST.achievementsSeen = achvEarned.map((a) => a.id);
+    save();
+  }
 
   view.innerHTML = `
   <div class="hero card">
@@ -272,6 +286,25 @@ function vHome(view) {
     </div>
   </div>
 
+  <div class="grid-2" style="margin-top:18px">
+    <div class="card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+      <div style="text-align:center;flex-shrink:0">
+        ${goalRingSVG(todayCnt, goal)}
+        <div class="stat-label" style="margin-top:6px">今日 ${todayCnt} / ${goal} 题</div>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <h3 class="card-title" style="margin-bottom:10px">今日目标</h3>
+        <p class="summary-text" style="margin-bottom:12px">🔥 连续学习 ${streakN} 天 · ${todayCnt >= goal ? "今日目标已达成，保持节奏！" : `还差 ${goal - todayCnt} 题`}</p>
+        <a class="btn btn-primary btn-sm" href="#/${CUR}/flashcards">🃏 闪卡复习</a>
+        <a class="btn btn-ghost btn-sm" href="#/${CUR}/quiz">✎ 继续刷题</a>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="card-title">成就 <span class="badge" style="margin-left:6px">${achvEarned.length}/${achvAll.length}</span></h3>
+      <div class="achv-strip">${achvEarned.slice(-8).map((a) => `<span class="achv-ico" title="${esc(a.name)}：${esc(a.desc)}">${a.icon}</span>`).join("") || '<span class="summary-text">完成刷题 / 模考 / 打卡 / 闪卡即可解锁成就</span>'}</div>
+      <button class="btn btn-ghost btn-sm" id="achvBtn" style="margin-top:12px">查看全部成就 →</button>
+    </div>
+  </div>
   <div class="card" style="margin-top:18px">
     <h3 class="card-title">学习热力图 · 近 16 周</h3>
     ${heatmapHTML()}
@@ -294,6 +327,19 @@ function vHome(view) {
       </div>
     </div>
   </div>`;
+  const ab = $("#achvBtn");
+  if (ab) ab.addEventListener("click", () => openAchievements(achvAll));
+}
+function goalRingSVG(cnt, goal) {
+  const ratio = Math.min(1, goal ? cnt / goal : 0);
+  const dash = (ratio * 264).toFixed(1);
+  return `<svg width="110" height="110" viewBox="0 0 110 110" role="img" aria-label="今日目标 ${cnt}/${goal}">
+    <circle cx="55" cy="55" r="42" fill="none" stroke="rgba(148,163,184,.15)" stroke-width="9"/>
+    <circle cx="55" cy="55" r="42" fill="none" stroke="url(#gg)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${dash} 264" transform="rotate(-90 55 55)"/>
+    <defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+    <text x="55" y="52" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="800" font-family="ui-monospace,monospace">${cnt}</text>
+    <text x="55" y="72" text-anchor="middle" fill="#8fa0b8" font-size="11">/ ${goal} 题</text>
+  </svg>`;
 }
 function heatmapHTML() {
   const cells = Core.heatmapCells((ST && ST.activity) || {}, new Date(), 16);
@@ -412,7 +458,24 @@ function vKDetail(view, id) {
         </div>
       </div>
     </div>
-    <div class="must-know"><b>★ 一句话必背：</b>${esc(k.mustKnow)}</div>`;
+    <div class="must-know"><b>★ 一句话必背：</b>${esc(k.mustKnow)}</div>
+    <div class="card" style="margin-top:16px">
+      <h3 class="card-title">我的笔记</h3>
+      <textarea class="input" id="noteArea" style="width:100%;min-height:110px;resize:vertical;line-height:1.8" placeholder="在这里记录本知识域的学习笔记…（自动保存）">${esc((ST.notes || {})[k.id] || "")}</textarea>
+      <div class="q-prog" id="noteStat" style="margin-top:8px">·</div>
+    </div>`;
+  const noteArea = $("#noteArea"), noteStat = $("#noteStat");
+  let noteDeb = null;
+  noteArea.addEventListener("input", () => {
+    clearTimeout(noteDeb);
+    noteStat.textContent = "✍ 输入中…";
+    noteDeb = setTimeout(() => {
+      ST.notes = ST.notes || {};
+      ST.notes[k.id] = noteArea.value;
+      save();
+      noteStat.textContent = "✓ 已自动保存（仅本机" + (Cloud.session ? "，并将同步到云端" : "") + "）";
+    }, 700);
+  });
 }
 
 /* ============================================================
@@ -450,6 +513,7 @@ function vQuiz(view) {
           <button class="btn btn-primary" id="qzStart">▶ 开始练习</button>
           <button class="btn btn-ghost" id="qzRandom">🎲 随机 20 题</button>
           <button class="btn btn-ghost" id="qzWrong" ${ST.wrong.length ? "" : "disabled"}>⚡ 错题重练（${ST.wrong.length}）</button>
+          <button class="btn btn-ghost" id="qzFav" ${ST.favorites.length ? "" : "disabled"}>⭐ 收藏重练（${ST.favorites.length}）</button>
         </div>
         <p class="summary-text" style="margin:2px 0 0">⌨ 键盘流：A-D 或 1-4 作答 · Enter 下一题</p>
       </div>
@@ -478,6 +542,7 @@ function vQuiz(view) {
   $("#qzStart").addEventListener("click", () => startQuiz($("#qzCh").value, parseInt($("#qzN").value)));
   $("#qzRandom").addEventListener("click", () => startQuiz("random", 20));
   $("#qzWrong").addEventListener("click", () => startQuiz("wrong", 0));
+  $("#qzFav").addEventListener("click", () => startQuiz("fav", 0));
   const realAllBtn = $("#qzRealAll");
   if (realAllBtn) realAllBtn.addEventListener("click", () => startQuiz("real-all", 0));
   $$("[data-realset]", view).forEach((b) => b.addEventListener("click", () => startQuiz("real:" + b.dataset.realset, 0)));
@@ -489,6 +554,7 @@ function startQuiz(mode, n) {
   if (mode === "all") ids = BANK.map((q) => q.id);
   else if (mode === "random") ids = shuffle(BANK.map((q) => q.id)).slice(0, n);
   else if (mode === "wrong") ids = ST.wrong.filter((id) => BYID[id]);
+  else if (mode === "fav") ids = ST.favorites.filter((id) => BYID[id]);
   else if (mode === "real-all") ids = REAL.map((q) => q.id);
   else if (mode.startsWith("real:")) ids = REAL.filter((q) => q.set === mode.slice(5)).map((q) => q.id);
   else ids = (BANK_IDS_BY_CH[mode] || []).slice();
@@ -507,6 +573,7 @@ function renderQuizQ(view) {
         ${q.ch ? `<span class="chip chip-hi">${esc(chName(q.ch))}</span>` : `<span class="chip chip-hi">🏆 ${esc(q.set || "真题")}</span>`}
         <span class="q-prog">第 ${QZ.i + 1} / ${QZ.qs.length} 题</span>
         <span class="q-prog" style="margin-left:auto;color:var(--green)">✓ ${QZ.right}</span>
+        <button class="btn btn-ghost btn-sm" id="favBtn" title="收藏本题">${ST.favorites.includes(q.id) ? "⭐" : "☆"}</button>
       </div>
       <div class="q-text">${esc(q.q)}</div>
       <div class="opts">
@@ -523,6 +590,13 @@ function renderQuizQ(view) {
       <div class="dots">${QZ.qs.map((id, idx) => `<i class="${idx < QZ.i ? (QZ.results[idx] ? "ok" : "bad") : (idx === QZ.i ? "cur" : "")}" style="${idx === QZ.i ? "outline:2px solid var(--cyan);outline-offset:1px" : ""}"></i>`).join("")}</div>
     </div>`;
   $$(".opt", view).forEach((btn) => btn.addEventListener("click", () => answerQuiz(btn, q)));
+  const favBtn = $("#favBtn");
+  if (favBtn) favBtn.addEventListener("click", () => {
+    const w = ST.favorites.indexOf(q.id);
+    if (w === -1) { ST.favorites.push(q.id); toast("⭐ 已收藏本题"); } else { ST.favorites.splice(w, 1); toast("已取消收藏"); }
+    save();
+    favBtn.textContent = ST.favorites.includes(q.id) ? "⭐" : "☆";
+  });
   $("#qzQuit").addEventListener("click", () => { QZ = null; router(); });
   $("#qzNext").addEventListener("click", () => {
     QZ.i++;
@@ -822,6 +896,170 @@ function vTips(view) {
 }
 
 /* ============================================================
+   视图：闪卡记忆（Leitner 间隔重复）
+   ============================================================ */
+let FC = null;
+function vFlashcards(view) {
+  if (FC && FC.running) return renderFlashcard(view);
+  if (FC && FC.done) return renderFlashEnd(view);
+  const all = Core.cardsFromKnowledge(T.knowledge || []);
+  const due = Core.dueCards(ST.flashcards || {}, all, new Date());
+  const learned = Object.keys(ST.flashcards || {}).length;
+  const perCh = (T.knowledge || []).map((k) => {
+    const cs = all.filter((c) => c.ch === k.id);
+    return { k, total: cs.length, due: due.filter((c) => c.ch === k.id).length };
+  }).filter((x) => x.total > 0);
+  view.innerHTML = `
+    <div class="grid-3" style="margin-bottom:18px">
+      <div class="card stat-card"><div class="stat-num">${all.length}</div><div class="stat-label">卡片总量（术语 + 必背）</div></div>
+      <div class="card stat-card"><div class="stat-num">${due.length}</div><div class="stat-label">今日到期待复习</div></div>
+      <div class="card stat-card"><div class="stat-num">${learned}</div><div class="stat-label">已在复习计划中</div></div>
+    </div>
+    <div class="card" style="max-width:640px">
+      <h3 class="card-title">开始复习（Leitner 间隔重复）</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0 6px">
+        <select class="input" id="fcCh" style="flex:1;min-width:220px">
+          <option value="all">📚 全部章节（到期 ${due.length} 张）</option>
+          ${perCh.map((x) => `<option value="${x.k.id}">${x.k.icon} ${esc(x.k.name)}（到期 ${x.due}/${x.total}）</option>`).join("")}
+        </select>
+        <label class="gate-remember" style="margin:0"><input type="checkbox" id="fcAll"> 含未到期</label>
+      </div>
+      <button class="btn btn-primary" id="fcStart">▶ 开始复习</button>
+      <p class="summary-text" style="margin-top:12px">评级规则：😃 记牢 → 间隔翻倍推进；🤔 模糊 → 保持当前间隔；😵 忘记 → 1 天后重见。记忆节奏：<span class="mono">1→2→4→8→16→32 天</span>。</p>
+    </div>`;
+  $("#fcStart").addEventListener("click", () => {
+    const ch = $("#fcCh").value;
+    const includeAll = $("#fcAll").checked;
+    let cards = ch === "all" ? all : all.filter((c) => c.ch === ch);
+    cards = Core.dueCards(ST.flashcards || {}, cards, new Date(), includeAll);
+    if (!cards.length) { toast("该范围暂无到期卡片（可勾选「含未到期」提前学习）"); return; }
+    if (EX && EX.timer) clearInterval(EX.timer);
+    EX = null; QZ = null;
+    FC = { running: true, done: false, cards, i: 0, stats: { again: 0, blur: 0, good: 0 } };
+    location.hash = "#/" + CUR + "/flashcards";
+    router();
+  });
+}
+function renderFlashcard(view) {
+  const card = FC.cards[FC.i];
+  view.innerHTML = `
+    <div class="card" style="max-width:640px;margin:0 auto">
+      <div class="q-meta">
+        <span class="chip chip-hi">${esc(chName(card.ch))}</span>
+        <span class="q-prog">第 ${FC.i + 1} / ${FC.cards.length} 张</span>
+        <span class="q-prog" style="margin-left:auto">😃 ${FC.stats.good} · 🤔 ${FC.stats.blur} · 😵 ${FC.stats.again}</span>
+      </div>
+      <div class="flashcard-scene" id="fcScene" title="点击翻面">
+        <div class="flashcard" id="fcCard">
+          <div class="flash-face front"><div><div style="font-size:17px;font-weight:700;text-align:center">${esc(card.front)}</div><div class="res-meta" style="margin-top:12px;text-align:center">点击卡片查看背面</div></div></div>
+          <div class="flash-face back"><div style="font-size:14.5px;line-height:1.9">${esc(card.back)}</div></div>
+        </div>
+      </div>
+      <div id="fcRate" hidden style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn btn-ghost" style="flex:1;color:var(--red)" data-r="0">😵 忘记</button>
+        <button class="btn btn-ghost" style="flex:1;color:var(--amber)" data-r="1">🤔 模糊</button>
+        <button class="btn btn-primary" style="flex:1" data-r="2">😃 记牢</button>
+      </div>
+      <div class="q-foot" style="margin-top:14px">
+        <button class="btn btn-ghost btn-sm" id="fcQuit">退出复习</button>
+        <span class="q-prog">Leitner 盒：${(ST.flashcards[card.id] && ST.flashcards[card.id].box) || 0} / 5</span>
+      </div>
+    </div>`;
+  $("#fcScene").addEventListener("click", () => {
+    $("#fcCard").classList.toggle("flipped");
+    $("#fcRate").hidden = false;
+  });
+  $$("#fcRate .btn").forEach((b) => b.addEventListener("click", () => {
+    const rating = parseInt(b.dataset.r);
+    if (rating === 2) FC.stats.good++; else if (rating === 1) FC.stats.blur++; else FC.stats.again++;
+    ST.flashcards[card.id] = Core.scheduleCard(ST.flashcards[card.id], rating, new Date());
+    logActivity("f");
+    FC.i++;
+    if (FC.i >= FC.cards.length) { FC.running = false; FC.done = true; }
+    router();
+  }));
+  $("#fcQuit").addEventListener("click", () => { FC = null; router(); });
+}
+function renderFlashEnd(view) {
+  view.innerHTML = `
+    <div class="card" style="max-width:640px;margin:0 auto;text-align:center">
+      <h3 class="card-title" style="justify-content:center">复习完成</h3>
+      <div class="score-wrap"><div class="score-num">${FC.cards.length}</div><span class="score-tag pass">张卡片已按记忆节奏排期</span></div>
+      <p style="color:var(--muted);margin:14px 0 22px">😃 记牢 ${FC.stats.good} · 🤔 模糊 ${FC.stats.blur} · 😵 忘记 ${FC.stats.again}——忘记的卡片 1 天后自动重见。</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary" id="fcAgain">继续复习到期卡</button>
+        <a class="btn btn-ghost" href="#/${CUR}/home">返回轨道首页</a>
+      </div>
+    </div>`;
+  $("#fcAgain").addEventListener("click", () => { FC = null; router(); });
+}
+
+/* ============================================================
+   视图：全局错题中心（跨轨道）
+   ============================================================ */
+function renderWrongBook() {
+  CUR = null; T = null; ST = null;
+  $("#topbarTitle").textContent = "错题中心";
+  $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === "wrongbook"));
+  closeSidebar();
+  const groups = [];
+  Object.keys(TRACKS()).forEach((tid) => {
+    const st = S.tracks[tid];
+    if (!st || !st.wrong.length) return;
+    const pack = TRACKS()[tid];
+    const pool = (pack.bank || []).concat((window.TRACKS_REAL || {})[tid] || []);
+    const chN = (id) => { const k = (pack.knowledge || []).find((x) => x.id === id); return k ? k.name : (id || "真题"); };
+    const items = st.wrong.map((id) => pool.find((q) => q.id === id)).filter(Boolean);
+    if (items.length) groups.push({ tid, name: pack.meta.name, chN, items });
+  });
+  const total = groups.reduce((s, g) => s + g.items.length, 0);
+  $("#view").innerHTML = `
+    <div class="hero card" style="padding:26px">
+      <span class="hero-kicker">⚡ WRONG-BOOK · 全局错题中心</span>
+      <h1 class="hero-title" style="font-size:28px">错题，是<em>提分最快</em>的地方</h1>
+      <p class="summary-text" style="margin-top:10px">跨轨道汇总所有错题：共 <b style="color:var(--txt)">${total}</b> 道。消灭一道，正确率与章节诊断立刻反馈。</p>
+    </div>
+    ${groups.length ? groups.map((g) => `
+      <div class="card" style="margin-top:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <h3 class="card-title" style="margin:0">${esc(g.name)}</h3>
+          <span class="badge">${g.items.length} 道</span>
+          <a class="btn btn-primary btn-sm" style="margin-left:auto" href="#/${g.tid}/quiz">⚡ 去重练本轨道错题</a>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${g.items.map((q) => `
+            <details style="border:1px solid var(--border);border-radius:10px;padding:10px 14px">
+              <summary style="cursor:pointer;font-size:13px">${esc(g.chN(q.ch))} · ${esc(q.q.slice(0, 46))}…</summary>
+              <p style="font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.8">正确答案：${LET[q.ans]}。${esc(q.exp || "无解析")}</p>
+            </details>`).join("")}
+        </div>
+      </div>`).join("") : `
+      <div class="card" style="margin-top:16px;text-align:center;padding:40px">
+        <div style="font-size:40px">🎊</div>
+        <p class="summary-text" style="margin-top:10px">所有轨道的错题本都是空的——继续保持！</p>
+      </div>`}`;
+  renderTopbar(); renderFoot();
+  window.scrollTo(0, 0);
+}
+function openAchievements(list) {
+  $("#modalRoot").innerHTML = `
+  <div class="modal-mask" id="mask">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="成就墙">
+      <button class="modal-close" id="mclose" aria-label="关闭">✕</button>
+      <h3>🏅 成就墙</h3>
+      <div class="achv-grid">
+        ${list.map((a) => `
+          <div class="achv ${a.done ? "" : "locked"}"><span class="ico">${a.icon}</span>
+            <div><div class="sr-title">${esc(a.name)}</div><div class="sr-sub">${esc(a.desc)}</div></div>
+          </div>`).join("")}
+      </div>
+    </div>
+  </div>`;
+  $("#mask").addEventListener("click", (e) => { if (e.target.id === "mask") closeModal(); });
+  $("#mclose").addEventListener("click", closeModal);
+}
+
+/* ============================================================
    🔍 全局搜索 / ⚙ 数据管理
    ============================================================ */
 function closeModal() { $("#modalRoot").innerHTML = ""; }
@@ -879,6 +1117,11 @@ function openSettings() {
       <h3>⚙ 数据管理</h3>
       <div class="modal-body">
         <p>当前进度：<b>${Object.keys(S.tracks).length}</b> 条轨道 · 占用约 <b>${sizeKB} KB</b>（仅存本机浏览器，清除浏览器数据会丢失——建议定期导出备份）。</p>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+          <span>🎯 每日目标（题）</span>
+          <input type="number" class="input" id="goalInput" min="1" max="200" value="${(S.settings && S.settings.dailyGoal) || 20}" style="width:90px">
+          <button class="btn btn-sm btn-primary" id="goalSave">保存</button>
+        </div>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
           <button class="btn btn-primary btn-sm" id="expBtn">⬇ 导出全部进度（JSON 备份）</button>
           <label class="btn btn-ghost btn-sm" style="cursor:pointer">⬆ 导入备份（JSON）<input type="file" id="impFile" accept=".json,application/json" style="display:none"></label>
@@ -890,6 +1133,11 @@ function openSettings() {
   </div>`;
   $("#mask").addEventListener("click", (e) => { if (e.target.id === "mask") closeModal(); });
   $("#mclose").addEventListener("click", closeModal);
+  $("#goalSave").addEventListener("click", () => {
+    const v = Math.max(1, Math.min(200, parseInt($("#goalInput").value) || 20));
+    S.settings = S.settings || { dailyGoal: v };
+    S.settings.dailyGoal = v; save(); toast("每日目标已设为 " + v + " 题");
+  });
   $("#expBtn").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(S, null, 1)], { type: "application/json" });
     const a = document.createElement("a");
@@ -1070,6 +1318,10 @@ function renderGate(errMsg, mode) {
 window.addEventListener("hashchange", router);
 (async function start() {
   S = Core.loadFrom(localStorage, SKEY, V1KEY);
+  /* PWA 离线（https / localhost 环境注册） */
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
   /* 云模式自动探测 + 会话恢复（Cookie） */
   Cloud.available = await Cloud.detect();
   if (Cloud.available) { try { await Cloud.me(); } catch (e) { /* 未登录 */ } }

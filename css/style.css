@@ -463,3 +463,21 @@ option { background: var(--bg-2); }
 .auth-tab { flex: 1; padding: 9px 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .auth-tab:hover { color: var(--txt); border-color: var(--border-hi); }
 .auth-tab.active { background: var(--grad); color: #061018; font-weight: 700; border: none; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3); }
+
+/* ---------- 🃏 闪卡 / 🏅 成就（v3.1） ---------- */
+.flashcard-scene { perspective: 1400px; height: 230px; cursor: pointer; }
+.flashcard { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
+.flashcard.flipped { transform: rotateY(180deg); }
+.flash-face {
+  position: absolute; inset: 0; display: grid; place-items: center; padding: 26px;
+  border-radius: 16px; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  border: 1px solid var(--border-hi); background: var(--bg-2);
+  box-shadow: inset 0 0 30px rgba(34, 211, 238, 0.05);
+}
+.flash-face.back { transform: rotateY(180deg); background: linear-gradient(135deg, rgba(34, 211, 238, 0.12), rgba(139, 92, 246, 0.12)); }
+.achv-strip { display: flex; flex-wrap: wrap; gap: 8px; min-height: 34px; }
+.achv-ico { width: 38px; height: 38px; display: grid; place-items: center; font-size: 19px; border-radius: 11px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.3); }
+.achv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-top: 8px; }
+.achv { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); }
+.achv .ico { font-size: 20px; flex-shrink: 0; }
+.achv.locked { opacity: 0.38; filter: grayscale(1); }

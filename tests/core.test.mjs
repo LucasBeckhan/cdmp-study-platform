@@ -150,3 +150,73 @@ test("fmtMMSS / pct / shuffle / esc", () => {
   assert.deepEqual(shuffled.slice().sort(), [1, 2, 3, 4, 5]);
   assert.equal(Core.esc(`<a href="x">&</a>`), "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;");
 });
+
+/* ---------- 闪卡间隔重复 ---------- */
+test("cardsFromKnowledge：术语卡 + 必背卡生成", () => {
+  const cards = Core.cardsFromKnowledge([
+    { id: "ch3", name: "数据治理", mustKnow: "治理=权力与控制", terms: [{ term: "RACI", def: "职责矩阵" }, { term: "DGC", def: "治理委员会" }] },
+    { id: "ch4", name: "数据架构", terms: [] },
+  ]);
+  assert.equal(cards.length, 3);
+  assert.ok(cards.some((c) => c.id === "ch3:m" && c.front.includes("一句话必背")));
+});
+
+test("dueCards：新卡到期 / 未到期过滤 / 全部模式", () => {
+  const cards = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  const fc = { a: { box: 3, due: key(-10) }, b: { box: 0, due: key(0) } }; // a 十天后才到期，b 今天到期
+  assert.deepEqual(Core.dueCards(fc, cards, now).map((c) => c.id), ["b", "c"]);
+  assert.equal(Core.dueCards(fc, cards, now, true).length, 3);
+});
+
+test("scheduleCard：记牢升盒 / 模糊保盒 / 忘记归零，到期日按间隔推算", () => {
+  const t0 = { box: 2, due: key(1), seen: 5 };
+  const good = Core.scheduleCard(t0, 2, now);
+  assert.equal(good.box, 3);
+  assert.equal(good.due, Core.fmtDate(now.getTime() + 8 * DAY));
+  assert.equal(good.seen, 6);
+  const blur = Core.scheduleCard(t0, 1, now);
+  assert.equal(blur.box, 2);
+  const forget = Core.scheduleCard(t0, 0, now);
+  assert.equal(forget.box, 0);
+  assert.equal(forget.due, Core.fmtDate(now.getTime() + 1 * DAY));
+  const fresh = Core.scheduleCard(null, 2, now); // 新卡
+  assert.equal(fresh.box, 1);
+});
+
+test("todayCount：q/e/f 求和", () => {
+  const act = {}; act[key(0)] = { q: 3, e: 1, p: 1, f: 5 };
+  assert.equal(Core.todayCount(act, now), 9);
+  assert.equal(Core.todayCount({}, now), 0);
+});
+
+/* ---------- 成就系统 ---------- */
+test("achievementsFor：条件判定与解锁", () => {
+  const pack = {
+    meta: { name: "CDMP", exam: { pass: 60, target: 70, stretch: 80 } },
+    plan: { totalDays: 30 },
+    knowledge: [{ id: "ch1", name: "概述" }],
+  };
+  const p0 = Core.defaultTrackState();
+  const a0 = Core.achievementsFor(pack, p0, now);
+  assert.equal(a0.find((a) => a.id === "first").done, false);
+  const p1 = Core.defaultTrackState();
+  p1.chStats.ch1 = { done: 120, right: 100 };
+  p1.exams.push({ date: "2026-11-12", count: 100, right: 85, score: 85 });
+  const days = []; for (let i = 0; i < 7; i++) days.push(key(i));
+  days.forEach((d) => { p1.activity[d] = { q: 5, e: 0, p: 0 }; });
+  p1.wrong = [];
+  const a1 = Core.achievementsFor(pack, p1, now);
+  assert.equal(a1.find((a) => a.id === "first").done, true);
+  assert.equal(a1.find((a) => a.id === "hundred").done, true);
+  assert.equal(a1.find((a) => a.id === "streak7").done, true);
+  assert.equal(a1.find((a) => a.id === "stretch").done, true);
+  assert.equal(a1.find((a) => a.id === "clean").done, true);
+  assert.equal(a1.find((a) => a.id === "target").done, true);
+});
+
+test("fixState：settings 默认每日目标 20 且保留已存值", () => {
+  const s = Core.fixState({ v: 2, tracks: {} });
+  assert.equal(s.settings.dailyGoal, 20);
+  const s2 = Core.fixState({ v: 2, tracks: {}, settings: { dailyGoal: 50 } });
+  assert.equal(s2.settings.dailyGoal, 50);
+});

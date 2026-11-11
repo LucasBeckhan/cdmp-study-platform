@@ -1,0 +1,12 @@
+{
+  "name": "LearnOS · 个人学习操作系统",
+  "short_name": "LearnOS",
+  "description": "多轨道认证/技能学习平台：计划 → 精讲 → 闪卡 → 刷题 → 模考",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

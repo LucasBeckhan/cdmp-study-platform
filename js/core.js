@@ -101,8 +101,69 @@
     return { areas, terms, questions };
   };
 
+  /* ---------- 领域：闪卡（Leitner 间隔重复） ---------- */
+  const FLASH_INTERVALS = [1, 2, 4, 8, 16, 32]; // 天，box 0..5
+  const cardsFromKnowledge = (knowledge) => {
+    const cards = [];
+    (knowledge || []).forEach((k) => {
+      (k.terms || []).forEach((t) => cards.push({ id: `${k.id}:t:${t.term}`, ch: k.id, front: t.term, back: t.def }));
+      if (k.mustKnow) cards.push({ id: `${k.id}:m`, ch: k.id, front: `★ ${k.name} · 一句话必背`, back: k.mustKnow });
+    });
+    return cards;
+  };
+  /* 到期判定：新卡视为到期；date-only 到期日（当日 00:00 起即到期） */
+  const dueCards = (flashcards, cards, now, includeAll = false) => {
+    const t = now.getTime();
+    return cards.filter((c) => {
+      if (includeAll) return true;
+      const st = flashcards[c.id];
+      if (!st) return true;
+      return new Date(st.due + "T00:00:00").getTime() <= t;
+    });
+  };
+  /* rating: 0 忘记(归零) / 1 模糊(保持) / 2 记牢(box+1，上限 5) */
+  const scheduleCard = (st, rating, now) => {
+    const cur = (st && st.box) || 0;
+    const box = rating === 2 ? Math.min(cur + 1, 5) : rating === 1 ? cur : 0;
+    return { box, due: fmtDate(now.getTime() + FLASH_INTERVALS[box] * DAY), seen: ((st && st.seen) || 0) + 1 };
+  };
+
+  /* ---------- 领域：每日目标 / 成就 ---------- */
+  const todayCount = (activity, now) => {
+    const a = activity[fmtDate(now.getTime())] || {};
+    return (a.q || 0) + (a.e || 0) + (a.f || 0);
+  };
+
+  const achievementsFor = (pack, progress, now) => {
+    const EXM = (pack && pack.meta && pack.meta.exam) || { pass: 60, target: 70, stretch: 80 };
+    const planTotal = (pack && pack.plan && pack.plan.totalDays) || 0;
+    const doneQ = Object.values(progress.chStats || {}).reduce((s, c) => s + c.done, 0);
+    const best = (progress.exams || []).length ? Math.max(...progress.exams.map((e) => e.score)) : 0;
+    const streak = computeStreak(progress.activity || {}, now);
+    const fcSeen = Object.values(progress.flashcards || {}).reduce((s, c) => s + ((c && c.seen) || 0), 0);
+    const chMastery = (pack && pack.knowledge || []).some((k) => {
+      const st = (progress.chStats || {})[k.id];
+      return st && st.done >= 10 && st.right === st.done;
+    });
+    const raw = [
+      ["first", "🎯", "首战告捷", "完成第 1 道练习题", doneQ >= 1],
+      ["hundred", "💯", "百题斩", "累计刷题 100 道", doneQ >= 100],
+      ["streak7", "🔥", "七日之约", "连续学习 7 天", streak >= 7],
+      ["streak30", "🏆", "三十而立", "连续学习 30 天", streak >= 30],
+      ["pass", "✅", "跨过及格线", `模考达到 ${EXM.pass || 60} 分`, best >= (EXM.pass || 60)],
+      ["target", "🎖", "目标达成", `模考达到 ${EXM.target || 70} 分`, best >= (EXM.target || 70)],
+      ["stretch", "👑", "高分传说", `模考达到 ${EXM.stretch || 80} 分`, best >= (EXM.stretch || 80)],
+      ["clean", "🧹", "错题清零", "累计 50 题后错题本清空", doneQ >= 50 && (progress.wrong || []).length === 0],
+      ["master", "🏅", "章节宗师", "任一知识域刷满 10 题且全对", chMastery],
+      ["plan", "🗺", "计划达人", "完成全部学习计划打卡", planTotal > 0 && Object.keys(progress.checks || {}).length >= planTotal],
+      ["fc20", "🃏", "卡片学徒", "复习闪卡 20 张", fcSeen >= 20],
+      ["fc100", "🧠", "记忆大师", "复习闪卡 100 张", fcSeen >= 100],
+    ];
+    return raw.map(([id, icon, name, desc, done]) => ({ id, icon, name, desc, done }));
+  };
+
   /* ---------- 状态：默认 / 修复 / 迁移 ---------- */
-  const defaultTrackState = () => ({ checks: {}, chStats: {}, wrong: [], exams: [], resStatus: {}, examDate: "", termsRead: {}, activity: {} });
+  const defaultTrackState = () => ({ checks: {}, chStats: {}, wrong: [], exams: [], resStatus: {}, examDate: "", termsRead: {}, activity: {}, flashcards: {}, favorites: [], notes: {}, achievementsSeen: [] });
 
   const fixState = (s) => {
     s = s && typeof s === "object" ? s : {};
@@ -110,6 +171,7 @@
     s.tracks = s.tracks && typeof s.tracks === "object" ? s.tracks : {};
     Object.keys(s.tracks).forEach((k) => { s.tracks[k] = Object.assign(defaultTrackState(), s.tracks[k]); });
     if (!s.current || typeof s.current !== "string") s.current = "cdmp";
+    s.settings = Object.assign({ dailyGoal: 20 }, s.settings && typeof s.settings === "object" ? s.settings : {});
     return s;
   };
 
@@ -140,6 +202,7 @@
     LET, esc, pct, shuffle, fmtDate, fmtMMSS, searchStrip,
     gradeOk, applyAnswer, applyExamAnswers, computeScore, planProgress,
     computeStreak, heatmapCells, searchFilter,
+    FLASH_INTERVALS, cardsFromKnowledge, dueCards, scheduleCard, todayCount, achievementsFor,
     defaultTrackState, fixState, loadFrom, saveTo, ensureTrack, logActivityOn,
   };
   global.LearnOS = Object.assign({}, global.LearnOS, { core: api });
