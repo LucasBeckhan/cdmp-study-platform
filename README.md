@@ -59,17 +59,31 @@ python3 -m http.server 8080   # 浏览器打开 http://localhost:8080
 cdmp-study-platform/
 ├── index.html              # 应用壳（门禁 + 轨道导航）
 ├── css/style.css           # 深空科技风样式
-├── js/app.js               # 多轨道引擎：路由 / 门禁解密 / 刷题模考 / 进度管理
+├── js/
+│   ├── core.js             # 纯函数域逻辑（作答/统计/错题/洞察/搜索/状态迁移，Node 可测）
+│   ├── crypto.js           # 门禁加解密（PBKDF2 + AES-GCM，Node 可测）
+│   └── app.js              # 壳层：路由 / 视图 / 快捷键 / 门禁交互
+├── tests/                  # 单元测试（node --test，零依赖）
 ├── docs/PRODUCT.md         # 产品设计文档（定位 / IA / 领域模型 / 路线图）
 ├── tools/
 │   ├── parse_real_xlsx.py  # 真题 xlsx 解析器（纯标准库）
-│   └── encrypt-data.mjs    # 内容加密打包器（生成 data/vault.js）
+│   └── encrypt-data.mjs    # 内容加密打包器（自动发现分片 + 防呆清单）
+├── .github/workflows/ci.yml  # CI：语法 / 单测 / 仓库卫生
 └── data/
     ├── vault.js            # 🔐 加密保险库（仓库中唯一的分发声）
-    ├── platform.js         # 平台注册表：轨道清单 + 占位 + 平台级内容（明文，仅本地）
-    ├── track-cdmp.js       # CDMP 轨道组装器（明文，仅本地）
-    └── cdmp-*.js           # CDMP 轨道六件套分片（明文，仅本地）
+    ├── content.sha256      # 分片哈希清单（防"改数据忘重打包"）
+    └── *.js                # 轨道包明文分片（仅本地，不入库）
 ```
+
+**开发工作流**（维护者）：
+
+```bash
+npm test                      # 单元测试（node --test，零依赖）
+CDMP_PASS=密码 npm run build  # 明文数据 → 加密保险库（自动发现分片）
+npm run check                 # 校验明文与清单一致（防"改数据忘重打包"）
+```
+
+推送后 CI 自动执行：全量 JS 语法检查、单元测试、仓库卫生检查（明文数据不入库、保险库无明文标记）。
 
 ## ➕ 新增一条轨道（Java / PMP / CKA / Go）
 

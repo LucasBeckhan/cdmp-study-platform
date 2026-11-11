@@ -1,19 +1,17 @@
 /* ============================================================
-   LearnOS · 个人学习操作系统 — 多轨道通用引擎
-   轨道 Track = 一门认证/技能的内容包（window.TRACKS.<id>）
-   引擎只认内容包接口：换轨道零改动，进度按轨道隔离。
-   安全：内容打包于加密保险库（data/vault.js），密码派生密钥解锁。
+   LearnOS · app.js — 浏览器壳层：路由 / 视图 / 门禁 / 快捷键
+   纯逻辑在 js/core.js，加解密在 js/crypto.js（Node 可测）。
+   状态：全局 S × 每轨道进度 ST，localStorage 持久化。
    ============================================================ */
 "use strict";
 
-/* ---------------- 工具 ---------------- */
+/* ---------------- 模块接线 ---------------- */
+const Core = LearnOS.core;
+const Crypt = LearnOS.crypto;
+const { LET, esc, pct, shuffle, fmtDate, fmtMMSS } = Core;
+
 const $ = (sel, root) => (root || document).querySelector(sel);
 const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
-const esc = (t) => String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
-const LET = ["A", "B", "C", "D", "E", "F"];
-function shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
-function fmtDate(ts) { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 let toastTimer = null;
 function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
@@ -34,42 +32,12 @@ const chName = (id) => (CH[id] ? CH[id].name : id);
 const TRACKS = () => window.TRACKS || {};
 const PLAT = () => window.PLATFORM || { tracksOrder: Object.keys(TRACKS()), comingSoon: {}, general: {} };
 
-function defaultTrackState() { return { checks: {}, chStats: {}, wrong: [], exams: [], resStatus: {}, examDate: "", termsRead: {}, activity: {} }; }
-function fixState(s) {
-  s = s && typeof s === "object" ? s : {};
-  if (s.v !== 2) s = { v: 2, current: "cdmp", tracks: {} };
-  s.tracks = s.tracks && typeof s.tracks === "object" ? s.tracks : {};
-  Object.keys(s.tracks).forEach((k) => { s.tracks[k] = Object.assign(defaultTrackState(), s.tracks[k]); });
-  return s;
-}
-function loadState() {
-  try { const raw = localStorage.getItem(SKEY); if (raw) return fixState(JSON.parse(raw)); } catch (e) { /* 忽略损坏数据 */ }
-  try { // v1 → v2 自动迁移（CDMP 单轨时代的进度平移进轨道位）
-    const old = JSON.parse(localStorage.getItem(V1KEY));
-    if (old && (old.checks || old.chStats || old.exams || old.resStatus)) {
-      return fixState({ v: 2, current: "cdmp", tracks: { cdmp: old } });
-    }
-  } catch (e) { /* 无旧数据 */ }
-  return fixState({ v: 2, current: "cdmp", tracks: {} });
-}
-function save() { localStorage.setItem(SKEY, JSON.stringify(S)); }
-function getT(id) { const tid = id || CUR; if (!S.tracks[tid]) S.tracks[tid] = defaultTrackState(); return S.tracks[tid]; }
-/* 学习活动日志（热力图 / 连续打卡的数据源） */
-function logActivity(type, n) {
-  if (!ST) return;
-  const k = fmtDate(Date.now());
-  ST.activity[k] = ST.activity[k] || { q: 0, e: 0, p: 0 };
-  ST.activity[k][type] += (n || 1);
-  save();
-}
-function computeStreak() {
-  if (!ST) return 0;
-  const has = (d) => { const a = ST.activity[d]; return !!(a && (a.q || a.e || a.p)); };
-  const d = new Date();
-  if (!has(fmtDate(d.getTime()))) d.setTime(d.getTime() - 86400000);
-  let streak = 0;
-  while (has(fmtDate(d.getTime()))) { streak++; d.setTime(d.getTime() - 86400000); }
-  return streak;
+function save() { Core.saveTo(localStorage, SKEY, S); }
+function getT(id) { return Core.ensureTrack(S, id || CUR); }
+function logActivity(type, n) { if (!ST) return; Core.logActivityOn(ST, type, n || 1, new Date()); save(); }
+function daysLeft() {
+  if (!ST || !ST.examDate) return null;
+  return Math.ceil((new Date(ST.examDate + "T09:00:00") - Date.now()) / 86400000);
 }
 
 /* ---------------- 轨道装载 ---------------- */
@@ -102,6 +70,7 @@ function updateNav() {
 const VIEW_TITLES = { home: "学习首页", plan: "学习计划", knowledge: "知识体系", quiz: "章节刷题", exam: "模拟考试", resources: "资料纳管", tips: "备考攻略" };
 const VIEWS = Object.keys(VIEW_TITLES);
 function router() {
+  if (S && !$("#gatePwd")) closeModal(); // 路由切换时关闭残留的临时弹窗（门禁除外）
   const h = location.hash.replace(/^#\/?/, "");
   if (!h || h === "hub" || h === "home") return renderHub();
   const parts = h.split("/").filter(Boolean);
@@ -151,7 +120,7 @@ function renderTopbar() {
 }
 function renderFoot() {
   if (!T || !ST) {
-    $("#foot-progress").innerHTML = `<div class="fc-row"><span>LearnOS</span><b>v2.1 · ${Object.keys(TRACKS()).length} 轨道</b></div>`;
+    $("#foot-progress").innerHTML = `<div class="fc-row"><span>LearnOS</span><b>v2.2 · ${Object.keys(TRACKS()).length} 轨道</b></div>`;
     return;
   }
   const total = (T.plan && T.plan.totalDays) || 0;
@@ -160,7 +129,7 @@ function renderFoot() {
   const rightQ = Object.values(ST.chStats).reduce((s, c) => s + c.right, 0);
   $("#foot-progress").innerHTML = `
     <div class="fc-row"><span>${esc(T.meta.name)} 计划</span><b>${days}/${total} 天</b></div>
-    <div class="bar"><i style="width:${pct(days, total)}%"></i></div>
+    <div class="bar"><i style="width:${Core.planProgress(ST.checks, total)}%"></i></div>
     <div class="fc-row" style="margin-top:8px"><span>刷题正确率</span><b>${doneQ ? pct(rightQ, doneQ) + "%" : "—"}</b></div>
     <div class="bar"><i style="width:${doneQ ? pct(rightQ, doneQ) : 0}%"></i></div>`;
 }
@@ -168,23 +137,18 @@ function closeSidebar() { $("#sidebar").classList.remove("open"); $("#sidebarMas
 $("#menuBtn").addEventListener("click", () => { $("#sidebar").classList.toggle("open"); $("#sidebarMask").classList.toggle("show"); });
 $("#sidebarMask").addEventListener("click", closeSidebar);
 $$("#nav a").forEach((a) => a.addEventListener("click", closeSidebar));
-function daysLeft() {
-  if (!ST || !ST.examDate) return null;
-  const d = Math.ceil((new Date(ST.examDate + "T09:00:00") - Date.now()) / 86400000);
-  return d;
-}
 
 /* ============================================================
    视图：轨道中心（Hub）
    ============================================================ */
 function trackStats(tid) {
-  const st = S.tracks[tid] || defaultTrackState();
+  const st = S.tracks[tid] || Core.defaultTrackState();
   const pack = TRACKS()[tid];
   const doneQ = Object.values(st.chStats).reduce((s, c) => s + c.done, 0);
   const best = st.exams.length ? Math.max(...st.exams.map((e) => e.score)) : null;
   const totalDays = (pack && pack.plan && pack.plan.totalDays) || 0;
   const bankN = ((pack && pack.bank) || []).length + (((window.TRACKS_REAL || {})[tid]) || []).length;
-  return { st, doneQ, best, planPct: totalDays ? pct(Object.keys(st.checks).length, totalDays) : 0, bankN, days: Object.keys(st.checks).length };
+  return { st, doneQ, best, planPct: Core.planProgress(st.checks, totalDays), bankN, days: Object.keys(st.checks).length };
 }
 function renderHub() {
   CUR = null; T = null; ST = null;
@@ -252,7 +216,7 @@ function vHome(view) {
   const d = daysLeft();
   const planTotal = (T.plan && T.plan.totalDays) || 30;
   const EXM = T.meta.exam;
-  const streakN = computeStreak();
+  const streakN = Core.computeStreak((ST && ST.activity) || {}, new Date());
 
   view.innerHTML = `
   <div class="hero card">
@@ -322,21 +286,9 @@ function vHome(view) {
   </div>`;
 }
 function heatmapHTML() {
+  const cells = Core.heatmapCells((ST && ST.activity) || {}, new Date(), 16);
   const act = (ST && ST.activity) || {};
-  const DAY = 86400000;
-  const now = new Date();
-  const dow = (now.getDay() + 6) % 7; // 周一=0
-  const end = now.getTime();
-  const start = end - (15 * 7 + dow) * DAY; // 16 周，末列=本周
-  let cells = "";
-  for (let t = start; t <= end; t += DAY) {
-    const key = fmtDate(t);
-    const a = act[key] || {};
-    const c = (a.q || 0) + (a.e || 0);
-    const lvl = c >= 30 ? 4 : c >= 15 ? 3 : c >= 5 ? 2 : c >= 1 ? 1 : 0;
-    cells += `<i class="hm-cell l${lvl}" title="${key} · 刷题 ${a.q || 0} · 模考 ${a.e || 0}"></i>`;
-  }
-  return `<div class="heatmap">${cells}</div>`;
+  return `<div class="heatmap">${cells.map((c) => `<i class="hm-cell l${c.level}" title="${c.key} · 刷题 ${c.q} · 模考 ${c.e}"></i>`).join("")}</div>`;
 }
 function nextActions(doneQ, planTotal) {
   const acts = [];
@@ -394,8 +346,7 @@ function vPlan(view) {
   });
   $$(".day-row input").forEach((cb) => cb.addEventListener("change", () => {
     const day = cb.dataset.day;
-    if (cb.checked) ST.checks[day] = true; else delete ST.checks[day];
-    if (cb.checked) logActivity("p"); else save();
+    if (cb.checked) { ST.checks[day] = true; logActivity("p"); } else { delete ST.checks[day]; save(); }
     renderFoot();
     const card = cb.closest(".week-card");
     const all = $$(".day-row input", card), ok = all.filter((x) => x.checked).length;
@@ -490,6 +441,7 @@ function vQuiz(view) {
           <button class="btn btn-ghost" id="qzRandom">🎲 随机 20 题</button>
           <button class="btn btn-ghost" id="qzWrong" ${ST.wrong.length ? "" : "disabled"}>⚡ 错题重练（${ST.wrong.length}）</button>
         </div>
+        <p class="summary-text" style="margin:2px 0 0">⌨ 键盘流：A-D 或 1-4 作答 · Enter 下一题</p>
       </div>
     </div>
     ${REAL.length ? `
@@ -570,7 +522,7 @@ function renderQuizQ(view) {
 }
 function answerQuiz(btn, q) {
   const pick = parseInt(btn.dataset.i);
-  const ok = pick === q.ans;
+  const ok = Core.gradeOk(q, pick);
   $$(".opt", $("#view")).forEach((o) => {
     o.disabled = true;
     if (parseInt(o.dataset.i) === q.ans) o.classList.add("correct");
@@ -578,14 +530,8 @@ function answerQuiz(btn, q) {
   if (!ok) btn.classList.add("wrong");
   if (ok) QZ.right++;
   QZ.results[QZ.i] = ok;
-  if (q.ch) {
-    const st = ST.chStats[q.ch] || { done: 0, right: 0 };
-    st.done++; if (ok) st.right++; ST.chStats[q.ch] = st;
-  }
-  const w = ST.wrong.indexOf(q.id);
-  if (!ok && w === -1) ST.wrong.push(q.id);
-  if (ok && w > -1) ST.wrong.splice(w, 1);
-  logActivity("q");
+  Core.applyAnswer(ST, q, ok, new Date());
+  save();
   $("#qzExplain").innerHTML = `<div class="explain"><b>正确答案：${LET[q.ans]} ${esc(q.opts[q.ans])}</b><br>${q.exp ? esc(q.exp) : "本题为真题原卷题目，未附解析。建议回到知识体系，回顾对应知识域的核心考点。"}</div>`;
   $("#qzNext").disabled = false;
   $("#qzNext").textContent = QZ.i + 1 >= QZ.qs.length ? "查看结果 →" : "下一题 →";
@@ -624,7 +570,7 @@ function vExam(view) {
     <div class="grid-2">
       <div class="card">
         <h3 class="card-title">开始模拟考试</h3>
-        <p class="summary-text" style="margin-bottom:16px">全真模拟：从题库随机抽题，闭卷计时作答，<b style="color:var(--txt)">答完才显示对错</b>。及格线 ${EXM.pass}，目标 ${EXM.target}+，冲刺 ${EXM.stretch}。</p>
+        <p class="summary-text" style="margin-bottom:16px">全真模拟：从题库随机抽题，闭卷计时作答，<b style="color:var(--txt)">答完才显示对错</b>。及格线 ${EXM.pass}，目标 ${EXM.target}+，冲刺 ${EXM.stretch}。⌨ 键盘：A-D 作答 · F 标记 · ←/→ 翻题。</p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
           ${REAL.length ? `<select class="input" id="exSrc">
             <option value="bank">📚 知识域题库（${BANK.length} 题）</option>
@@ -712,24 +658,13 @@ function renderExamQ(view) {
   });
   $$(".pal", view).forEach((p) => p.addEventListener("click", () => { EX.i = parseInt(p.dataset.n); renderExamQ(view); }));
 }
-function fmtMMSS(s) { s = Math.max(0, s); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; }
 function submitExam() {
   clearInterval(EX.timer);
   const right = EX.qs.reduce((n, id, i) => n + (EX.answers[i] === BYID[id].ans ? 1 : 0), 0);
-  EX.score = pct(right, EX.qs.length); EX.right = right; EX.running = false; EX.done = true;
+  EX.score = Core.computeScore(right, EX.qs.length); EX.right = right; EX.running = false; EX.done = true;
   ST.exams.push({ date: fmtDate(Date.now()), count: EX.qs.length, right, score: EX.score });
-  EX.qs.forEach((id, i) => {
-    const q = BYID[id], ok = EX.answers[i] === q.ans;
-    if (q.ch) {
-      const st = ST.chStats[q.ch] || { done: 0, right: 0 };
-      st.done++; if (ok) st.right++; ST.chStats[q.ch] = st;
-    }
-    const w = ST.wrong.indexOf(id);
-    if (!ok && w === -1) ST.wrong.push(id);
-    if (ok && w > -1) ST.wrong.splice(w, 1);
-  });
-  logActivity("e");
-  router();
+  Core.applyExamAnswers(ST, EX.qs, EX.answers, BYID, new Date());
+  save(); router();
 }
 function renderExamResult(view) {
   const EXM = T.meta.exam;
@@ -748,7 +683,7 @@ function renderExamResult(view) {
     <div class="card" style="max-width:820px;margin:0 auto 18px;text-align:center">
       <h3 class="card-title" style="justify-content:center">模考成绩单</h3>
       <div class="score-wrap">
-        <svg width="170" height="170" viewBox="0 0 170 170">
+        <svg width="170" height="170" viewBox="0 0 170 170" role="img" aria-label="得分 ${s} 分">
           <circle cx="85" cy="85" r="72" fill="none" stroke="rgba(148,163,184,.15)" stroke-width="12"/>
           <circle cx="85" cy="85" r="72" fill="none" stroke="url(#sg)" stroke-width="12" stroke-linecap="round"
             stroke-dasharray="${(s / 100 * 452.4).toFixed(1)} 452.4" transform="rotate(-90 85 85)"/>
@@ -880,13 +815,12 @@ function vTips(view) {
    🔍 全局搜索 / ⚙ 数据管理
    ============================================================ */
 function closeModal() { $("#modalRoot").innerHTML = ""; }
-function searchStrip(s) { return String(s || "").replace(/<[^>]+>/g, ""); }
 function openSearch() {
   if (!T) return;
   $("#modalRoot").innerHTML = `
   <div class="modal-mask" id="mask">
-    <div class="modal-card">
-      <button class="modal-close" id="mclose">✕</button>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="全局搜索">
+      <button class="modal-close" id="mclose" aria-label="关闭">✕</button>
       <h3>🔍 全局搜索 <span class="badge" style="margin-left:6px">${esc(T.meta.name)}</span></h3>
       <input class="input" id="searchInput" placeholder="搜索 术语 / 考点 / 题干…" autocomplete="off">
       <div id="searchResults" class="search-results"><p class="summary-text">输入关键词即时出结果：术语、考点、题干（题目可预览答案与解析）。</p></div>
@@ -902,21 +836,17 @@ function openSearch() {
 function renderSearchResults(q) {
   const box = $("#searchResults");
   if (!box) return;
-  if (!q) { box.innerHTML = `<p class="summary-text">输入关键词即时出结果：术语、考点、题干（题目可预览答案与解析）。</p>`; return; }
-  const kw = q.toLowerCase();
-  const areas = [], terms = [], qs = [];
-  (T.knowledge || []).forEach((k) => {
-    if (k.name.toLowerCase().includes(kw) || searchStrip(k.brief).toLowerCase().includes(kw)) areas.push(k);
-    (k.terms || []).forEach((t) => { if (String(t.term).toLowerCase().includes(kw) || String(t.def).toLowerCase().includes(kw)) terms.push({ ...t, area: k }); });
-  });
-  BANK.concat(REAL).forEach((item) => { if (String(item.q).toLowerCase().includes(kw)) qs.push(item); });
-  if (!areas.length && !terms.length && !qs.length) { box.innerHTML = `<p class="summary-text">没有匹配「${esc(q)}」的结果。</p>`; return; }
+  const { areas, terms, questions } = Core.searchFilter(T.knowledge, BANK, REAL, q);
+  if (!q || (!areas.length && !terms.length && !questions.length)) {
+    box.innerHTML = `<p class="summary-text">${q ? `没有匹配「${esc(q)}」的结果。` : "输入关键词即时出结果：术语、考点、题干（题目可预览答案与解析）。"}</p>`;
+    return;
+  }
   box.innerHTML = `
     ${terms.length ? `<div class="sr-group">📖 术语（${terms.length}）</div>` + terms.slice(0, 8).map((t) => `
       <div class="sr-item"><div class="sr-title">${esc(t.term)} <span class="badge">${esc(t.area.name)}</span></div><div class="sr-sub">${esc(t.def)}</div></div>`).join("") : ""}
     ${areas.length ? `<div class="sr-group">❖ 知识域（${areas.length}）</div>` + areas.slice(0, 6).map((k) => `
-      <a class="sr-item" href="#/${CUR}/knowledge/${k.id}" id="srArea-${k.id}"><div class="sr-title">${k.icon} ${esc(k.name)}</div><div class="sr-sub">${esc(searchStrip(k.brief))}</div></a>`).join("") : ""}
-    ${qs.length ? `<div class="sr-group">✎ 题目（${qs.length}）</div>` + qs.slice(0, 8).map((item) => `
+      <a class="sr-item" href="#/${CUR}/knowledge/${k.id}" id="srArea-${k.id}"><div class="sr-title">${k.icon} ${esc(k.name)}</div><div class="sr-sub">${esc(Core.searchStrip(k.brief))}</div></a>`).join("") : ""}
+    ${questions.length ? `<div class="sr-group">✎ 题目（${questions.length}）</div>` + questions.slice(0, 8).map((item) => `
       <div class="sr-item" data-qid="${esc(item.id)}" style="cursor:pointer"><div class="sr-title">${esc(item.q.slice(0, 60))}${item.q.length > 60 ? "…" : ""}</div><div class="sr-sub">${esc(chName(item.ch) || item.set || "真题")}</div></div>`).join("") : ""}`;
   $$("a.sr-item", box).forEach((a) => a.addEventListener("click", () => closeModal()));
   $$(".sr-item[data-qid]", box).forEach((el) => el.addEventListener("click", () => {
@@ -934,8 +864,8 @@ function openSettings() {
   const sizeKB = (JSON.stringify(S).length / 1024).toFixed(1);
   $("#modalRoot").innerHTML = `
   <div class="modal-mask" id="mask">
-    <div class="modal-card">
-      <button class="modal-close" id="mclose">✕</button>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="数据管理">
+      <button class="modal-close" id="mclose" aria-label="关闭">✕</button>
       <h3>⚙ 数据管理</h3>
       <div class="modal-body">
         <p>当前进度：<b>${Object.keys(S.tracks).length}</b> 条轨道 · 占用约 <b>${sizeKB} KB</b>（仅存本机浏览器，清除浏览器数据会丢失——建议定期导出备份）。</p>
@@ -967,7 +897,7 @@ function openSettings() {
         const parsed = JSON.parse(rd.result);
         if (!parsed || parsed.v !== 2 || !parsed.tracks) throw new Error("bad");
         if (!confirm("导入将覆盖当前所有进度，确定吗？")) return;
-        S = fixState(parsed); save(); location.reload();
+        S = Core.fixState(parsed); save(); location.reload();
       } catch (err) { toast("导入失败：文件格式不正确"); }
     };
     rd.readAsText(f);
@@ -975,7 +905,7 @@ function openSettings() {
   $("#resetBtn").addEventListener("click", () => {
     if (!T) return;
     if (!confirm(`确定清空「${T.meta.name}」的全部学习进度吗？此操作不可恢复。`)) return;
-    S.tracks[CUR] = defaultTrackState(); save(); location.reload();
+    S.tracks[CUR] = Core.defaultTrackState(); save(); location.reload();
   });
 }
 
@@ -1007,21 +937,6 @@ document.addEventListener("keydown", (e) => {
    🔐 登录门禁（加密保险库）
    ============================================================ */
 const GATE_KEY = "learnos_unlock_key"; // 勾选"记住此设备"时保存派生密钥（仅存本机）
-function b64ToBuf(b64) { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
-function bufToB64(buf) { const u = new Uint8Array(buf); let s = ""; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); }
-async function deriveBitsFromPass(pass) {
-  const V = window.CDMP_VAULT;
-  const enc = new TextEncoder();
-  const baseKey = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveBits"]);
-  return crypto.subtle.deriveBits({ name: "PBKDF2", salt: b64ToBuf(V.salt), iterations: V.iterations || 310000, hash: "SHA-256" }, baseKey, 256);
-}
-async function decryptWithBits(bits) {
-  const V = window.CDMP_VAULT;
-  const key = await crypto.subtle.importKey("raw", bits, { name: "AES-GCM" }, false, ["decrypt"]);
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBuf(V.iv) }, key, b64ToBuf(V.ct));
-  const text = new TextDecoder().decode(plain);
-  new Function(text)(); // 解密结果即各数据分片的 window.* 注册（同源自有内容）
-}
 function boot() {
   const TR = TRACKS();
   const target = S.current && TR[S.current] ? S.current : Object.keys(TR)[0] || null;
@@ -1032,9 +947,9 @@ function boot() {
 function renderGate(errMsg) {
   $("#modalRoot").innerHTML = `
   <div class="modal-mask">
-    <div class="gate-card ${errMsg ? "shake" : ""}">
+    <div class="gate-card ${errMsg ? "shake" : ""}" role="dialog" aria-modal="true" aria-label="访问门禁">
       <div class="gate-logo">
-        <svg viewBox="0 0 64 64" width="30" height="30"><defs><linearGradient id="glg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><circle cx="32" cy="32" r="27" fill="none" stroke="url(#glg)" stroke-width="5"/><circle cx="32" cy="32" r="7" fill="url(#glg)"/><path d="M32 9v11M32 44v11M9 32h11M44 32h11" stroke="url(#glg)" stroke-width="5" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><defs><linearGradient id="glg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><circle cx="32" cy="32" r="27" fill="none" stroke="url(#glg)" stroke-width="5"/><circle cx="32" cy="32" r="7" fill="url(#glg)"/><path d="M32 9v11M32 44v11M9 32h11M44 32h11" stroke="url(#glg)" stroke-width="5" stroke-linecap="round"/></svg>
         <strong>LearnOS</strong>
       </div>
       <h2>私有学习平台</h2>
@@ -1042,7 +957,7 @@ function renderGate(errMsg) {
       <input type="password" id="gatePwd" class="input" placeholder="访 问 密 码" autocomplete="current-password">
       <label class="gate-remember"><input type="checkbox" id="gateRemember" checked> 记住此设备，下次免输入</label>
       <button class="btn btn-primary" id="gateBtn">🔓 解锁平台</button>
-      <div class="gate-err" id="gateErr">${errMsg ? esc(errMsg) : ""}</div>
+      <div class="gate-err" id="gateErr" role="alert">${errMsg ? esc(errMsg) : ""}</div>
       <p class="gate-hint">🔒 密码仅用于在本地解密内容，不会发送到任何服务器</p>
     </div>
   </div>`;
@@ -1052,9 +967,10 @@ function renderGate(errMsg) {
     const btn = $("#gateBtn");
     btn.disabled = true; btn.textContent = "🔓 解锁中…";
     try {
-      const bits = await deriveBitsFromPass(pwd);
-      await decryptWithBits(bits);
-      if ($("#gateRemember").checked) localStorage.setItem(GATE_KEY, bufToB64(bits));
+      const bits = await Crypt.deriveBitsFromPass(window.CDMP_VAULT, pwd);
+      const text = await Crypt.decryptWithBits(window.CDMP_VAULT, bits);
+      new Function(text)(); // 解密结果即各数据分片的 window.* 注册（同源自有内容）
+      if ($("#gateRemember").checked) localStorage.setItem(GATE_KEY, Crypt.bufToB64(bits));
       $("#modalRoot").innerHTML = "";
       boot();
     } catch (e) {
@@ -1069,12 +985,15 @@ function renderGate(errMsg) {
 /* ---------------- 启动 ---------------- */
 window.addEventListener("hashchange", router);
 (async function start() {
-  S = loadState();
+  S = Core.loadFrom(localStorage, SKEY, V1KEY);
   if (!window.CDMP_VAULT || !window.CDMP_VAULT.ct) { boot(); return; } // 开发模式：无保险库直接启动
   const saved = localStorage.getItem(GATE_KEY);
   if (saved) {
-    try { await decryptWithBits(b64ToBuf(saved)); boot(); return; }
-    catch (e) { localStorage.removeItem(GATE_KEY); }
+    try {
+      const text = await Crypt.decryptWithBits(window.CDMP_VAULT, Crypt.b64ToBuf(saved));
+      new Function(text)();
+      boot(); return;
+    } catch (e) { localStorage.removeItem(GATE_KEY); }
   }
   renderGate();
 })();

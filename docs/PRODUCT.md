@@ -102,12 +102,22 @@ Progress（每用户 × 每轨道，localStorage / 未来云同步）
 
 ## 7. 前端架构
 
-- **形态**：零依赖原生 SPA（hash 路由），壳层与轨道内容全部静态资源。
+- **形态**：零依赖原生 SPA（hash 路由），壳层与轨道内容全部静态资源；经典脚本 + `LearnOS`
+  命名空间（保留 file:// 双击可用，不引入打包器）。
+- **模块分层**（v2.2）：
+  - `js/core.js` — 纯函数域逻辑（作答/统计/错题本/活动洞察/搜索/状态迁移），
+    浏览器与 Node 双端可用（`module.exports` 守卫），`node --test tests/` 覆盖；
+  - `js/crypto.js` — 门禁加解密（PBKDF2 + AES-256-GCM），同样双端可测；
+  - `js/app.js` — 壳层：路由、视图渲染、快捷键、门禁交互（纯 DOM，无业务规则）。
 - **安全层**：内容打包为 AES-256-GCM 加密保险库（`data/vault.js`），密钥由访问密码
   PBKDF2(310k) 派生，浏览器端 Web Crypto 就地解密；明文永不入库、不上服务器。
+- **构建**：`tools/encrypt-data.mjs` 自动发现 `data/*.js` 分片（platform 最先、track-* 最后），
+  输出保险库 + `data/content.sha256` 哈希清单；`npm run check` 防"改数据忘重打包"。
+- **CI**：GitHub Actions —— 语法检查、node:test 单测、仓库卫生（明文数据不入库、保险库无明文标记）。
 - **状态机**：`Platform(只读) × Progress(读写)`；进度写入即持久化（localStorage），
   视图函数均为 `(Track, Progress) → DOM` 的纯渲染。
 - **扩展点**：新轨道=新数据包；新题型（多选/判断/案例）= 引擎加渲染分支，数据结构向前兼容。
+- **下一阶段**：视图层组件化拆分（app.js 仍为最大文件）、进度端到端加密导出、PWA 离线。
 
 ## 8. 后端演进
 

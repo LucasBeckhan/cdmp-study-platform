@@ -1,0 +1,11 @@
+{
+  "name": "learnos",
+  "version": "2.2.0",
+  "private": true,
+  "description": "LearnOS · 个人学习操作系统（多轨道认证/技能学习平台，零依赖静态站）",
+  "scripts": {
+    "build": "node tools/encrypt-data.mjs",
+    "check": "node tools/encrypt-data.mjs --check-local",
+    "test": "node --test tests/"
+  }
+}

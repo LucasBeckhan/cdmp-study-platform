@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 语法检查（全部 JS）
+        run: |
+          fail=0
+          for f in js/*.js tools/*.mjs; do
+            node --check "$f" || fail=1
+          done
+          exit $fail
+
+      - name: 单元测试（node:test）
+        run: node --test tests/
+
+      - name: 仓库卫生（明文数据不入库 / 保险库无明文标记）
+        run: |
+          test -f data/vault.js
+          COUNT=$(git ls-files 'data/*.js' | grep -cv 'data/vault.js' || true)
+          if [ "$COUNT" != "0" ]; then echo "::error::明文数据文件被跟踪："; git ls-files 'data/*.js' | grep -v 'data/vault.js'; exit 1; fi
+          if grep -qE 'window\.(TRACKS|QUESTIONS|KNOWLEDGE|CDMP_(KNOWLEDGE|PLAN|Q[0-9]|REAL|RESOURCES|TIPS))' data/vault.js; then
+            echo "::error::保险库中检出明文内容标记"; exit 1
+          fi
+          echo "OK: data/ 仅含加密保险库"
