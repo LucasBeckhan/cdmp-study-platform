@@ -43,34 +43,42 @@
 
 ## 🚀 快速开始
 
-**在线使用**：GitHub Pages 线上地址（`main` 分支根目录）。
+**本地模式（免费，单设备）**：GitHub Pages 线上地址（`main` 分支根目录），输入内容密码即用。
 
-**本地使用**：
+**云端模式（多账号 · 多设备同步 · 自托管）**：
 
 ```bash
 git clone https://github.com/LucasBeckhan/cdmp-study-platform.git
 cd cdmp-study-platform
-python3 -m http.server 8080   # 浏览器打开 http://localhost:8080
+LEARNOS_CONTENT_PASS=cdmp PORT=8787 npm start
+# 打开 http://localhost:8787 → 门禁出现「账号登录」→ 注册即用
 ```
+
+登录后：进度自动云同步（track 粒度 LWW + 错题/模考并集合并）、内容自动解锁、顶栏显示同步状态。生产部署（Docker / VPS+systemd+Caddy / Railway）见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
 ## 🗂 项目结构
 
 ```
 cdmp-study-platform/
-├── index.html              # 应用壳（门禁 + 轨道导航）
+├── index.html              # 应用壳（双模式门禁 + 轨道导航）
 ├── css/style.css           # 深空科技风样式
 ├── js/
 │   ├── core.js             # 纯函数域逻辑（作答/统计/错题/洞察/搜索/状态迁移，Node 可测）
 │   ├── crypto.js           # 门禁加解密（PBKDF2 + AES-GCM，Node 可测）
+│   ├── cloud.js            # ☁ 云模式客户端（探测/认证/进度同步/LWW 合并）
 │   └── app.js              # 壳层：路由 / 视图 / 快捷键 / 门禁交互
-├── tests/                  # 单元测试（node --test，零依赖）
-├── docs/PRODUCT.md         # 产品设计文档（定位 / IA / 领域模型 / 路线图）
-├── tools/
-│   ├── parse_real_xlsx.py  # 真题 xlsx 解析器（纯标准库）
-│   └── encrypt-data.mjs    # 内容加密打包器（自动发现分片 + 防呆清单）
-├── .github/workflows/ci.yml  # CI：语法 / 单测 / 仓库卫生
+├── server/                 # ☁ API 服务器（零依赖 Node：静态托管 + REST API）
+│   ├── index.mjs           # HTTP 入口（静态 + CSP 安全头 + SPA 回退）
+│   ├── api.mjs             # 认证/进度路由（scrypt 账号 + 会话 + 限流）
+│   ├── auth.mjs            # 密码散列 / 会话令牌 / 输入校验
+│   └── db.mjs              # 原子化 JSON 存储
+├── tests/                  # 27 例测试（node --test：core + crypto + 服务器 API）
+├── docs/                   # PRODUCT.md（PRD）· DEPLOY.md（部署指南）
+├── tools/                  # 打包器（自动发现 + 防呆清单）· 真题解析器
+├── Dockerfile / docker-compose.yml  # 容器化部署
+├── .github/workflows/ci.yml         # CI：语法 / 27 测试 / 仓库卫生
 └── data/
-    ├── vault.js            # 🔐 加密保险库（仓库中唯一的分发声）
+    ├── vault.js            # 🔐 加密保险库（JSON 模式，免 eval，严格 CSP 可用）
     ├── content.sha256      # 分片哈希清单（防"改数据忘重打包"）
     └── *.js                # 轨道包明文分片（仅本地，不入库）
 ```

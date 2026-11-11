@@ -123,9 +123,9 @@ Progress（每用户 × 每轨道，localStorage / 未来云同步）
 
 | 级别 | 架构 | 数据归属 | 成本 |
 |---|---|---|---|
-| **L1（当前）** | GitHub Pages 静态托管 + 加密保险库 + localStorage | 用户浏览器 | 0 元 |
-| **L2** | 同 L1 前端 + Supabase（Auth + Postgres + RLS）；本地优先、退避推送、登录即拉取 | 用户账号（可导出） | 0 元（免费档） |
-| **L3** | 自建 API（Node/Go）+ Postgres + 对象存储（资料私有桶 + 签名 URL）+ 管理后台；大陆访问需备案域名 | 平台托管 | ¥100-500/年起 |
+| **L1 本地模式** | GitHub Pages 静态托管 + 加密保险库 + localStorage | 用户浏览器 | 0 元 |
+| **L2 云端模式（v3.0 已交付）** | 自建零依赖 Node API（scrypt 账号体系 + HttpOnly 会话 + track 粒度 LWW 同步 + 限流 + 严格 CSP）+ 前端双模式自动切换；Docker/系统部署 | 用户账号 | 服务器 ¥30-100/月（小规格可免费） |
+| **L3 平台化** | 对象存储（资料私有桶 + 签名 URL）+ 管理后台（轨道 CMS）+ 支付/会员；大陆访问需备案域名 | 平台托管 | ¥100-500/年起 |
 
 **同步策略（L2 预研结论）**：进度 payload 以 track 为粒度整体上云，`updated_at` 撮合
 last-write-wins；`wrong[]` 与 `exams[]` 做并集合并，避免多端互踩。

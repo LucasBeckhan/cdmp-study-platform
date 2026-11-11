@@ -1,0 +1,13 @@
+services:
+  learnos:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      # 登录后自动解锁内容（与打包保险库时使用的 CDMP_PASS 一致）
+      - LEARNOS_CONTENT_PASS=cdmp
+      # 服务器数据目录（账号 / 会话 / 进度）
+      - LEARNOS_DATA_DIR=/app/server-data
+    volumes:
+      - ./server-data:/app/server-data
+    restart: unless-stopped

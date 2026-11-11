@@ -18,7 +18,7 @@ jobs:
       - name: 语法检查（全部 JS）
         run: |
           fail=0
-          for f in js/*.js tools/*.mjs; do
+          for f in js/*.js server/*.mjs tools/*.mjs; do
             node --check "$f" || fail=1
           done
           exit $fail

@@ -11,6 +11,7 @@
    ============================================================ */
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { pbkdf2Sync, randomBytes, createCipheriv, createHash } from "node:crypto";
+import vm from "node:vm";
 
 const DATA = "data";
 const VAULT = `${DATA}/vault.js`;
@@ -71,19 +72,37 @@ if (bundle.trim().length < 100) {
   process.exit(1);
 }
 
+/* 沙箱执行分片，捕获 window 数据全局 → 纯 JSON 保险库（客户端免 eval，支持严格 CSP） */
+const sandboxWindow = {};
+try {
+  vm.runInNewContext(bundle, { window: sandboxWindow });
+} catch (e) {
+  console.error("✗ 分片执行失败：" + e.message);
+  process.exit(1);
+}
+const globals = {};
+for (const k of Object.keys(sandboxWindow)) {
+  if (sandboxWindow[k] !== undefined) globals[k] = sandboxWindow[k];
+}
+if (!globals.TRACKS) {
+  console.error("✗ 分片未产出 TRACKS（缺少 data/track-*.js 组装器？）");
+  process.exit(1);
+}
+const payloadText = JSON.stringify({ v: 1, globals });
+
 const salt = randomBytes(16);
 const iv = randomBytes(12);
 const key = pbkdf2Sync(pass, salt, 310000, 32, "sha256");
 const cipher = createCipheriv("aes-256-gcm", key, iv);
-const ct = Buffer.concat([cipher.update(bundle, "utf8"), cipher.final(), cipher.getAuthTag()]);
+const ct = Buffer.concat([cipher.update(payloadText, "utf8"), cipher.final(), cipher.getAuthTag()]);
 
 const out =
   `/* 🔐 加密数据保险库 — 由 tools/encrypt-data.mjs 自动发现并打包
-   内容为 AES-256-GCM 密文；密钥由访问密码经 PBKDF2 派生，仓库中不含明文与密码 */\n` +
+   内容为 AES-256-GCM 密文（纯 JSON 模式：解密后 JSON.parse 装载，客户端免 eval）；密钥由访问密码经 PBKDF2 派生 */\n` +
   `window.CDMP_VAULT = { iterations: 310000, salt: "${salt.toString("base64")}", iv: "${iv.toString("base64")}", ct: "${ct.toString("base64")}" };\n`;
 
 writeFileSync(VAULT, out);
 writeFileSync(MANIFEST, contentHashes());
-console.log(`✓ 已生成 data/vault.js：${files.length} 个分片，明文 ${bundle.length} 字符 → 密文 ${ct.length} 字节（salt/iv 随机化）`);
+console.log(`✓ 已生成 data/vault.js（JSON 模式）：${files.length} 个分片，${Object.keys(globals).length} 个全局 → 明文 ${payloadText.length} 字符 → 密文 ${ct.length} 字节`);
 console.log(`  分片顺序：${files.join(" → ")}`);
 console.log("  记得提交 data/vault.js 与 data/content.sha256；明文 data/*.js 始终留在本地，不要入库。");

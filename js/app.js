@@ -8,6 +8,7 @@
 /* ---------------- 模块接线 ---------------- */
 const Core = LearnOS.core;
 const Crypt = LearnOS.crypto;
+const Cloud = LearnOS.cloud;
 const { LET, esc, pct, shuffle, fmtDate, fmtMMSS } = Core;
 
 const $ = (sel, root) => (root || document).querySelector(sel);
@@ -32,7 +33,11 @@ const chName = (id) => (CH[id] ? CH[id].name : id);
 const TRACKS = () => window.TRACKS || {};
 const PLAT = () => window.PLATFORM || { tracksOrder: Object.keys(TRACKS()), comingSoon: {}, general: {} };
 
-function save() { Core.saveTo(localStorage, SKEY, S); }
+function save(push = true) {
+  if (CUR && S.tracks[CUR]) S.tracks[CUR].updatedAt = new Date().toISOString();
+  Core.saveTo(localStorage, SKEY, S);
+  if (push) Cloud.queuePush(S); // 云模式：防抖推送（本地模式为空操作）
+}
 function getT(id) { return Core.ensureTrack(S, id || CUR); }
 function logActivity(type, n) { if (!ST) return; Core.logActivityOn(ST, type, n || 1, new Date()); save(); }
 function daysLeft() {
@@ -96,6 +101,11 @@ function renderTopbar() {
   const d = daysLeft();
   if (d !== null) right.push(`<span class="chip chip-hi mono">⏱ 距考试 ${Math.max(0, d)} 天</span>`);
   if (T) right.push(`<span class="chip mono">题库 ${BANK.length + REAL.length} 题</span>`);
+  if (Cloud.session) {
+    const stTxt = { syncing: "⟳ 同步中", synced: "☁ 已同步", error: "⚠ 同步异常", idle: "☁ 云端" }[Cloud.status] || "☁";
+    right.push(`<span class="chip" title="云端账号">👤 ${esc(Cloud.session)}</span>`);
+    right.push(`<span class="chip chip-hi">${stTxt}</span>`);
+  }
   if (CUR && TRACKS()[CUR]) {
     const opts = (PLAT().tracksOrder || Object.keys(TRACKS())).map((id) => {
       const tr = TRACKS()[id];
@@ -937,6 +947,31 @@ document.addEventListener("keydown", (e) => {
    🔐 登录门禁（加密保险库）
    ============================================================ */
 const GATE_KEY = "learnos_unlock_key"; // 勾选"记住此设备"时保存派生密钥（仅存本机）
+
+/* 解密产物的装载：v3 JSON 保险库（免 eval，支持严格 CSP）/ 旧版 JS 兼容 */
+async function applyDecrypted(text) {
+  if (text.trimStart().startsWith("{")) {
+    const data = JSON.parse(text);
+    Object.entries(data.globals || {}).forEach(([k, v]) => { window[k] = v; });
+  } else {
+    new Function(text)(); // 旧版 JS 保险库兼容
+  }
+}
+/* 云模式：拉取服务端进度并与本地合并（track 粒度 LWW + 集合并集） */
+async function pullAndMerge() {
+  if (!Cloud.available || !Cloud.session) return;
+  try {
+    const remote = await Cloud.pullProgress();
+    for (const tid of Object.keys(remote)) {
+      const r = remote[tid];
+      const l = S.tracks[tid];
+      if (!l) S.tracks[tid] = Cloud.mergeTrack(Core.defaultTrackState(), r.payload, true, r.updatedAt);
+      else if (!l.updatedAt || r.updatedAt >= l.updatedAt) S.tracks[tid] = Cloud.mergeTrack(l, r.payload, true, r.updatedAt);
+      else Cloud.queuePush(S); // 本地较新 → 稍后推送覆盖服务端
+    }
+    Core.saveTo(localStorage, SKEY, S);
+  } catch (e) { /* 离线容错：保留本地，待恢复后自动重推 */ }
+}
 function boot() {
   const TR = TRACKS();
   const target = S.current && TR[S.current] ? S.current : Object.keys(TR)[0] || null;
@@ -944,7 +979,10 @@ function boot() {
   router();
   renderFoot();
 }
-function renderGate(errMsg) {
+function renderGate(errMsg, mode) {
+  const cloudOn = Cloud.available;
+  mode = mode || (cloudOn ? "account" : "pass");
+  const tabBtn = (id, label) => `<button class="auth-tab ${mode === id ? "active" : ""}" data-tab="${id}">${label}</button>`;
   $("#modalRoot").innerHTML = `
   <div class="modal-mask">
     <div class="gate-card ${errMsg ? "shake" : ""}" role="dialog" aria-modal="true" aria-label="访问门禁">
@@ -953,45 +991,102 @@ function renderGate(errMsg) {
         <strong>LearnOS</strong>
       </div>
       <h2>私有学习平台</h2>
-      <p class="gate-sub">内容已端到端加密，请输入访问密码解锁</p>
-      <input type="password" id="gatePwd" class="input" placeholder="访 问 密 码" autocomplete="current-password">
-      <label class="gate-remember"><input type="checkbox" id="gateRemember" checked> 记住此设备，下次免输入</label>
-      <button class="btn btn-primary" id="gateBtn">🔓 解锁平台</button>
+      ${cloudOn ? `<div class="auth-tabs">${tabBtn("account", "👤 账号登录")}${tabBtn("pass", "🔑 内容密码")}</div>`
+                : `<p class="gate-sub">内容已端到端加密，请输入访问密码解锁</p>`}
+      <div id="tab-account" ${mode === "account" ? "" : "hidden"}>
+        <p class="gate-sub">登录后自动同步多设备进度，并自动解锁内容</p>
+        <input type="email" id="authEmail" class="input" placeholder="邮箱" autocomplete="username">
+        <input type="password" id="authPass" class="input" placeholder="密码（≥8 位，含字母和数字）" autocomplete="current-password">
+        <button class="btn btn-primary" id="authLogin" style="width:100%">👤 登录</button>
+        <button class="btn btn-ghost" id="authRegister" style="width:100%;margin-top:10px">✨ 注册新账号</button>
+      </div>
+      <div id="tab-pass" ${mode === "pass" ? "" : "hidden"}>
+        <input type="password" id="gatePwd" class="input" placeholder="访 问 密 码" autocomplete="current-password">
+        <label class="gate-remember"><input type="checkbox" id="gateRemember" checked> 记住此设备，下次免输入</label>
+        <button class="btn btn-primary" id="gateBtn">🔓 解锁平台</button>
+      </div>
       <div class="gate-err" id="gateErr" role="alert">${errMsg ? esc(errMsg) : ""}</div>
-      <p class="gate-hint">🔒 密码仅用于在本地解密内容，不会发送到任何服务器</p>
+      <p class="gate-hint">🔒 ${cloudOn ? "账号用于云端同步；内容在本机解密，学习数据不向第三方泄露" : "密码仅用于在本地解密内容，不会发送到任何服务器"}</p>
     </div>
   </div>`;
-  const doUnlock = async () => {
-    const pwd = $("#gatePwd").value;
+  $$(".auth-tab").forEach((b) => b.addEventListener("click", () => renderGate(null, b.dataset.tab)));
+  /* 内容密码解锁 */
+  const doPass = async () => {
+    const pwd = $("#gatePwd") ? $("#gatePwd").value : "";
     if (!pwd) { $("#gateErr").textContent = "请输入访问密码"; return; }
     const btn = $("#gateBtn");
     btn.disabled = true; btn.textContent = "🔓 解锁中…";
     try {
       const bits = await Crypt.deriveBitsFromPass(window.CDMP_VAULT, pwd);
       const text = await Crypt.decryptWithBits(window.CDMP_VAULT, bits);
-      new Function(text)(); // 解密结果即各数据分片的 window.* 注册（同源自有内容）
+      await applyDecrypted(text);
       if ($("#gateRemember").checked) localStorage.setItem(GATE_KEY, Crypt.bufToB64(bits));
       $("#modalRoot").innerHTML = "";
+      await pullAndMerge();
       boot();
     } catch (e) {
-      renderGate("密码不正确，请重试");
+      renderGate("密码不正确，请重试", mode);
     }
   };
-  $("#gateBtn").addEventListener("click", doUnlock);
-  $("#gatePwd").addEventListener("keydown", (e) => { if (e.key === "Enter") doUnlock(); });
-  $("#gatePwd").focus();
+  /* 账号登录 / 注册（登录后自动拉取进度；配置内容密码时自动解锁内容） */
+  const doAuth = async (register) => {
+    const email = ($("#authEmail") && $("#authEmail").value || "").trim();
+    const pw = ($("#authPass") && $("#authPass").value) || "";
+    if (!email || !pw) { $("#gateErr").textContent = "请输入邮箱与密码"; return; }
+    const btn = register ? $("#authRegister") : $("#authLogin");
+    btn.disabled = true;
+    try {
+      const me = register ? await Cloud.register(email, pw) : await Cloud.login(email, pw);
+      await pullAndMerge();
+      if (me.contentPass) {
+        const bits = await Crypt.deriveBitsFromPass(window.CDMP_VAULT, me.contentPass);
+        const text = await Crypt.decryptWithBits(window.CDMP_VAULT, bits);
+        await applyDecrypted(text);
+        localStorage.setItem(GATE_KEY, Crypt.bufToB64(bits));
+        $("#modalRoot").innerHTML = "";
+        boot();
+        return;
+      }
+      renderGate(null, "pass"); // 服务器未配置内容密码 → 手动输入内容解锁密码
+    } catch (e) {
+      renderGate(e.message || "登录失败", mode);
+    }
+  };
+  const al = $("#authLogin"), ar = $("#authRegister");
+  if (al) al.addEventListener("click", () => doAuth(false));
+  if (ar) ar.addEventListener("click", () => doAuth(true));
+  const ap = $("#authPass");
+  if (ap) ap.addEventListener("keydown", (e) => { if (e.key === "Enter") doAuth(false); });
+  const gb = $("#gateBtn");
+  if (gb) gb.addEventListener("click", doPass);
+  const gp = $("#gatePwd");
+  if (gp) {
+    gp.addEventListener("keydown", (e) => { if (e.key === "Enter") doPass(); });
+    gp.focus();
+  } else if (al) al.focus();
 }
 
 /* ---------------- 启动 ---------------- */
 window.addEventListener("hashchange", router);
 (async function start() {
   S = Core.loadFrom(localStorage, SKEY, V1KEY);
+  /* 云模式自动探测 + 会话恢复（Cookie） */
+  Cloud.available = await Cloud.detect();
+  if (Cloud.available) { try { await Cloud.me(); } catch (e) { /* 未登录 */ } }
+  Cloud.onStatus = () => { if (S) renderTopbar(); };
+  Cloud.onNewerTrack = (tid, payload, updatedAt) => {
+    const l = S.tracks[tid];
+    S.tracks[tid] = Cloud.mergeTrack(l || Core.defaultTrackState(), payload, true, updatedAt);
+    Core.saveTo(localStorage, SKEY, S);
+    if (CUR === tid) ST = S.tracks[tid];
+  };
   if (!window.CDMP_VAULT || !window.CDMP_VAULT.ct) { boot(); return; } // 开发模式：无保险库直接启动
   const saved = localStorage.getItem(GATE_KEY);
   if (saved) {
     try {
       const text = await Crypt.decryptWithBits(window.CDMP_VAULT, Crypt.b64ToBuf(saved));
-      new Function(text)();
+      await applyDecrypted(text);
+      await pullAndMerge();
       boot(); return;
     } catch (e) { localStorage.removeItem(GATE_KEY); }
   }

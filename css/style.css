@@ -457,3 +457,9 @@ option { background: var(--bg-2); }
 .hm-cell.l4 { background: var(--grad); box-shadow: 0 0 6px rgba(34, 211, 238, 0.55); }
 .hm-legend { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dim); margin-top: 8px; }
 .hm-legend .hm-cell { width: 10px; height: 10px; }
+
+/* ---------- ☁ 云模式认证（v3.0） ---------- */
+.auth-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.auth-tab { flex: 1; padding: 9px 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.auth-tab:hover { color: var(--txt); border-color: var(--border-hi); }
+.auth-tab.active { background: var(--grad); color: #061018; font-weight: 700; border: none; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3); }
