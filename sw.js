@@ -6,6 +6,7 @@ const PRECACHE = [
   "./", "./index.html", "./css/style.css",
   "./js/core.js", "./js/crypto.js", "./js/cloud.js", "./js/app.js",
   "./data/vault.js", "./manifest.webmanifest", "./icon.svg",
+  "./icon-180.png", "./icon-192.png", "./icon-512.png",
 ];
 
 self.addEventListener("install", (e) => {

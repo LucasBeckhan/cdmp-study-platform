@@ -1,0 +1,25 @@
+name: LearnOS
+options:
+  bundleIdPrefix: dev.learnos
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+targets:
+  LearnOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: LearnOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"   # 仅 iPhone（iPad 支持改为 "1,2"）
+        SWIFT_VERSION: "5.9"
+    info:
+      path: LearnOS/Info.plist
+      properties:
+        CFBundleDisplayName: LearnOS
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        ITSAppUsesNonExemptEncryption: false
