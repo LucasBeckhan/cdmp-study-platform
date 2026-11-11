@@ -1,0 +1,10 @@
+# 原始真题文件（版权原因不入库，仅本地解析）
+_import/
+.DS_Store
+
+__pycache__/
+*.pyc
+
+# 明文学习数据仅保留在维护者本地；仓库与线上只分发加密保险库
+data/*.js
+!data/vault.js
