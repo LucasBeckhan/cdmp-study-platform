@@ -24,8 +24,9 @@ if (pass.length < 4) {
 }
 
 const FILES = [
-  "plan", "knowledge", "questions-1", "questions-2", "questions-3",
-  "questions-4", "questions-real", "resources", "tips",
+  "platform", "cdmp-real", "cdmp-knowledge", "cdmp-plan",
+  "cdmp-questions-1", "cdmp-questions-2", "cdmp-questions-3", "cdmp-questions-4",
+  "cdmp-resources", "cdmp-tips", "track-cdmp",
 ];
 
 const parts = [];

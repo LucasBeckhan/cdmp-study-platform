@@ -238,7 +238,7 @@ def rows_to_questions(rows, layout, set_name, sheet_name, warn):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+", help="xlsx 文件路径（可多个）")
-    ap.add_argument("-o", "--out", default="data/questions-real.js")
+    ap.add_argument("-o", "--out", default="data/cdmp-real.js")
     args = ap.parse_args()
 
     def warn(msg):
@@ -278,7 +278,8 @@ def main():
     sets = sorted({q["set"] for q in all_q})
     out = "// 由 tools/parse_real_xlsx.py 生成：本地导入真题题库\n"
     out += f"// 共 {total} 题 · {len(sets)} 套\n"
-    out += "window.QUESTIONS_REAL = " + json.dumps(all_q, ensure_ascii=False, indent=1) + ";\n"
+    out += "window.TRACKS_REAL = window.TRACKS_REAL || {};\n"
+    out += "window.TRACKS_REAL.cdmp = " + json.dumps(all_q, ensure_ascii=False, indent=1) + ";\n"
     Path(args.out).write_text(out, encoding="utf-8")
     print(f"\n== 完成：{total} 题 / {len(sets)} 套 → {args.out} ==")
     print("套卷：", ", ".join(sets))
