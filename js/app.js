@@ -34,7 +34,7 @@ const chName = (id) => (CH[id] ? CH[id].name : id);
 const TRACKS = () => window.TRACKS || {};
 const PLAT = () => window.PLATFORM || { tracksOrder: Object.keys(TRACKS()), comingSoon: {}, general: {} };
 
-function defaultTrackState() { return { checks: {}, chStats: {}, wrong: [], exams: [], resStatus: {}, examDate: "", termsRead: {} }; }
+function defaultTrackState() { return { checks: {}, chStats: {}, wrong: [], exams: [], resStatus: {}, examDate: "", termsRead: {}, activity: {} }; }
 function fixState(s) {
   s = s && typeof s === "object" ? s : {};
   if (s.v !== 2) s = { v: 2, current: "cdmp", tracks: {} };
@@ -54,6 +54,23 @@ function loadState() {
 }
 function save() { localStorage.setItem(SKEY, JSON.stringify(S)); }
 function getT(id) { const tid = id || CUR; if (!S.tracks[tid]) S.tracks[tid] = defaultTrackState(); return S.tracks[tid]; }
+/* 学习活动日志（热力图 / 连续打卡的数据源） */
+function logActivity(type, n) {
+  if (!ST) return;
+  const k = fmtDate(Date.now());
+  ST.activity[k] = ST.activity[k] || { q: 0, e: 0, p: 0 };
+  ST.activity[k][type] += (n || 1);
+  save();
+}
+function computeStreak() {
+  if (!ST) return 0;
+  const has = (d) => { const a = ST.activity[d]; return !!(a && (a.q || a.e || a.p)); };
+  const d = new Date();
+  if (!has(fmtDate(d.getTime()))) d.setTime(d.getTime() - 86400000);
+  let streak = 0;
+  while (has(fmtDate(d.getTime()))) { streak++; d.setTime(d.getTime() - 86400000); }
+  return streak;
+}
 
 /* ---------------- 轨道装载 ---------------- */
 function loadTrack(tid) {
@@ -119,16 +136,22 @@ function renderTopbar() {
     }).join("");
     right.push(`<select class="input" id="trackSel" style="padding:6px 10px;font-size:12.5px" title="切换轨道">${opts}</select>`);
   }
+  right.push(`<button class="btn btn-ghost btn-sm" id="searchBtn" title="全局搜索（Ctrl+K）">🔍</button>`);
+  right.push(`<button class="btn btn-ghost btn-sm" id="dataBtn" title="备份与恢复">⚙</button>`);
   right.push(`<button class="btn btn-ghost btn-sm" id="logoutBtn" title="退出登录">🔒 退出</button>`);
   $("#topbarRight").innerHTML = right.join(" ");
   const sel = $("#trackSel");
   if (sel) sel.addEventListener("change", () => { location.hash = "#/" + sel.value + "/home"; });
+  const sb = $("#searchBtn");
+  if (sb) sb.addEventListener("click", () => openSearch());
+  const db = $("#dataBtn");
+  if (db) db.addEventListener("click", () => openSettings());
   const lo = $("#logoutBtn");
   if (lo) lo.addEventListener("click", () => { localStorage.removeItem(GATE_KEY); location.reload(); });
 }
 function renderFoot() {
   if (!T || !ST) {
-    $("#foot-progress").innerHTML = `<div class="fc-row"><span>LearnOS</span><b>${Object.keys(TRACKS()).length} 条轨道</b></div>`;
+    $("#foot-progress").innerHTML = `<div class="fc-row"><span>LearnOS</span><b>v2.1 · ${Object.keys(TRACKS()).length} 轨道</b></div>`;
     return;
   }
   const total = (T.plan && T.plan.totalDays) || 0;
@@ -229,6 +252,7 @@ function vHome(view) {
   const d = daysLeft();
   const planTotal = (T.plan && T.plan.totalDays) || 30;
   const EXM = T.meta.exam;
+  const streakN = computeStreak();
 
   view.innerHTML = `
   <div class="hero card">
@@ -238,6 +262,7 @@ function vHome(view) {
     <div class="chip-row">
       ${(EXM.chips || []).map((c) => `<span class="chip">${esc(c)}</span>`).join("")}
       ${d !== null ? `<span class="chip chip-hi">🎯 考试日：${esc(ST.examDate)}</span>` : ""}
+      ${streakN > 0 ? `<span class="chip">🔥 连续学习 ${streakN} 天</span>` : ""}
     </div>
     <div class="cta-row">
       <a class="btn btn-primary" href="#/${CUR}/plan">⟠ 开始 ${planTotal} 天计划</a>
@@ -273,6 +298,11 @@ function vHome(view) {
     </div>
   </div>
 
+  <div class="card" style="margin-top:18px">
+    <h3 class="card-title">学习热力图 · 近 16 周</h3>
+    ${heatmapHTML()}
+    <div class="hm-legend"><span>少</span><i class="hm-cell"></i><i class="hm-cell l1"></i><i class="hm-cell l2"></i><i class="hm-cell l3"></i><i class="hm-cell l4"></i><span>多</span></div>
+  </div>
   <div class="grid-2" style="margin-top:18px">
     <div class="card">
       <h3 class="card-title">考试权重分布（参考）</h3>
@@ -290,6 +320,23 @@ function vHome(view) {
       </div>
     </div>
   </div>`;
+}
+function heatmapHTML() {
+  const act = (ST && ST.activity) || {};
+  const DAY = 86400000;
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // 周一=0
+  const end = now.getTime();
+  const start = end - (15 * 7 + dow) * DAY; // 16 周，末列=本周
+  let cells = "";
+  for (let t = start; t <= end; t += DAY) {
+    const key = fmtDate(t);
+    const a = act[key] || {};
+    const c = (a.q || 0) + (a.e || 0);
+    const lvl = c >= 30 ? 4 : c >= 15 ? 3 : c >= 5 ? 2 : c >= 1 ? 1 : 0;
+    cells += `<i class="hm-cell l${lvl}" title="${key} · 刷题 ${a.q || 0} · 模考 ${a.e || 0}"></i>`;
+  }
+  return `<div class="heatmap">${cells}</div>`;
 }
 function nextActions(doneQ, planTotal) {
   const acts = [];
@@ -348,7 +395,8 @@ function vPlan(view) {
   $$(".day-row input").forEach((cb) => cb.addEventListener("change", () => {
     const day = cb.dataset.day;
     if (cb.checked) ST.checks[day] = true; else delete ST.checks[day];
-    save(); renderFoot();
+    if (cb.checked) logActivity("p"); else save();
+    renderFoot();
     const card = cb.closest(".week-card");
     const all = $$(".day-row input", card), ok = all.filter((x) => x.checked).length;
     $(".week-pct", card).textContent = `${ok}/${all.length} ✓`;
@@ -473,6 +521,8 @@ function vQuiz(view) {
   $$("[data-realset]", view).forEach((b) => b.addEventListener("click", () => startQuiz("real:" + b.dataset.realset, 0)));
 }
 function startQuiz(mode, n) {
+  if (EX && EX.timer) clearInterval(EX.timer); // 刷题与模考会话互斥
+  EX = null;
   let ids = [];
   if (mode === "all") ids = BANK.map((q) => q.id);
   else if (mode === "random") ids = shuffle(BANK.map((q) => q.id)).slice(0, n);
@@ -535,7 +585,7 @@ function answerQuiz(btn, q) {
   const w = ST.wrong.indexOf(q.id);
   if (!ok && w === -1) ST.wrong.push(q.id);
   if (ok && w > -1) ST.wrong.splice(w, 1);
-  save();
+  logActivity("q");
   $("#qzExplain").innerHTML = `<div class="explain"><b>正确答案：${LET[q.ans]} ${esc(q.opts[q.ans])}</b><br>${q.exp ? esc(q.exp) : "本题为真题原卷题目，未附解析。建议回到知识体系，回顾对应知识域的核心考点。"}</div>`;
   $("#qzNext").disabled = false;
   $("#qzNext").textContent = QZ.i + 1 >= QZ.qs.length ? "查看结果 →" : "下一题 →";
@@ -600,6 +650,7 @@ function vExam(view) {
       </div>
     </div>`;
   $("#exStart").addEventListener("click", () => {
+    QZ = null; // 刷题与模考会话互斥
     const n = parseInt($("#exN").value);
     const src = $("#exSrc") ? $("#exSrc").value : "bank";
     const pool = (src === "real" && REAL.length) ? REAL : BANK;
@@ -677,7 +728,8 @@ function submitExam() {
     if (!ok && w === -1) ST.wrong.push(id);
     if (ok && w > -1) ST.wrong.splice(w, 1);
   });
-  save(); router();
+  logActivity("e");
+  router();
 }
 function renderExamResult(view) {
   const EXM = T.meta.exam;
@@ -823,6 +875,133 @@ function vTips(view) {
       <div class="callout good" style="margin-top:14px"><span class="co-ico">💡</span><span><b>建议：</b>先用网页版跑通全部学习闭环（0 成本）。若确有小程序需求，个人主体可免费注册（刷题/展示类功能够用）；如需企业认证（¥300/年）+ 备案域名服务器（约 ¥100-300/年），可基于本平台代码用 uni-app/Taro 低成本改造。</span></div>
     </div>` : ""}`;
 }
+
+/* ============================================================
+   🔍 全局搜索 / ⚙ 数据管理
+   ============================================================ */
+function closeModal() { $("#modalRoot").innerHTML = ""; }
+function searchStrip(s) { return String(s || "").replace(/<[^>]+>/g, ""); }
+function openSearch() {
+  if (!T) return;
+  $("#modalRoot").innerHTML = `
+  <div class="modal-mask" id="mask">
+    <div class="modal-card">
+      <button class="modal-close" id="mclose">✕</button>
+      <h3>🔍 全局搜索 <span class="badge" style="margin-left:6px">${esc(T.meta.name)}</span></h3>
+      <input class="input" id="searchInput" placeholder="搜索 术语 / 考点 / 题干…" autocomplete="off">
+      <div id="searchResults" class="search-results"><p class="summary-text">输入关键词即时出结果：术语、考点、题干（题目可预览答案与解析）。</p></div>
+    </div>
+  </div>`;
+  $("#mask").addEventListener("click", (e) => { if (e.target.id === "mask") closeModal(); });
+  $("#mclose").addEventListener("click", closeModal);
+  const inp = $("#searchInput");
+  inp.focus();
+  let deb = null;
+  inp.addEventListener("input", () => { clearTimeout(deb); deb = setTimeout(() => renderSearchResults(inp.value.trim()), 140); });
+}
+function renderSearchResults(q) {
+  const box = $("#searchResults");
+  if (!box) return;
+  if (!q) { box.innerHTML = `<p class="summary-text">输入关键词即时出结果：术语、考点、题干（题目可预览答案与解析）。</p>`; return; }
+  const kw = q.toLowerCase();
+  const areas = [], terms = [], qs = [];
+  (T.knowledge || []).forEach((k) => {
+    if (k.name.toLowerCase().includes(kw) || searchStrip(k.brief).toLowerCase().includes(kw)) areas.push(k);
+    (k.terms || []).forEach((t) => { if (String(t.term).toLowerCase().includes(kw) || String(t.def).toLowerCase().includes(kw)) terms.push({ ...t, area: k }); });
+  });
+  BANK.concat(REAL).forEach((item) => { if (String(item.q).toLowerCase().includes(kw)) qs.push(item); });
+  if (!areas.length && !terms.length && !qs.length) { box.innerHTML = `<p class="summary-text">没有匹配「${esc(q)}」的结果。</p>`; return; }
+  box.innerHTML = `
+    ${terms.length ? `<div class="sr-group">📖 术语（${terms.length}）</div>` + terms.slice(0, 8).map((t) => `
+      <div class="sr-item"><div class="sr-title">${esc(t.term)} <span class="badge">${esc(t.area.name)}</span></div><div class="sr-sub">${esc(t.def)}</div></div>`).join("") : ""}
+    ${areas.length ? `<div class="sr-group">❖ 知识域（${areas.length}）</div>` + areas.slice(0, 6).map((k) => `
+      <a class="sr-item" href="#/${CUR}/knowledge/${k.id}" id="srArea-${k.id}"><div class="sr-title">${k.icon} ${esc(k.name)}</div><div class="sr-sub">${esc(searchStrip(k.brief))}</div></a>`).join("") : ""}
+    ${qs.length ? `<div class="sr-group">✎ 题目（${qs.length}）</div>` + qs.slice(0, 8).map((item) => `
+      <div class="sr-item" data-qid="${esc(item.id)}" style="cursor:pointer"><div class="sr-title">${esc(item.q.slice(0, 60))}${item.q.length > 60 ? "…" : ""}</div><div class="sr-sub">${esc(chName(item.ch) || item.set || "真题")}</div></div>`).join("") : ""}`;
+  $$("a.sr-item", box).forEach((a) => a.addEventListener("click", () => closeModal()));
+  $$(".sr-item[data-qid]", box).forEach((el) => el.addEventListener("click", () => {
+    const item = BYID[el.dataset.qid];
+    if (!item) return;
+    box.innerHTML = `
+      <div class="q-text" style="font-size:14.5px">${esc(item.q)}</div>
+      <div class="opts">${item.opts.map((o, i) => `<div class="opt ${i === item.ans ? "correct" : ""}" style="cursor:default"><span class="opt-letter">${LET[i]}</span><span>${esc(o)}</span></div>`).join("")}</div>
+      <div class="explain" style="margin-top:12px"><b>正确答案：${LET[item.ans]}</b><br>${esc(item.exp || "无解析")}</div>
+      <a class="btn btn-ghost btn-sm" style="margin-top:12px" id="srGoQuiz" href="#/${CUR}/quiz">去刷本章 →</a>`;
+    $("#srGoQuiz").addEventListener("click", closeModal);
+  }));
+}
+function openSettings() {
+  const sizeKB = (JSON.stringify(S).length / 1024).toFixed(1);
+  $("#modalRoot").innerHTML = `
+  <div class="modal-mask" id="mask">
+    <div class="modal-card">
+      <button class="modal-close" id="mclose">✕</button>
+      <h3>⚙ 数据管理</h3>
+      <div class="modal-body">
+        <p>当前进度：<b>${Object.keys(S.tracks).length}</b> 条轨道 · 占用约 <b>${sizeKB} KB</b>（仅存本机浏览器，清除浏览器数据会丢失——建议定期导出备份）。</p>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+          <button class="btn btn-primary btn-sm" id="expBtn">⬇ 导出全部进度（JSON 备份）</button>
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer">⬆ 导入备份（JSON）<input type="file" id="impFile" accept=".json,application/json" style="display:none"></label>
+          <button class="btn btn-ghost btn-sm" id="resetBtn" style="color:var(--red)">🗑 重置当前轨道进度（${esc(T ? T.meta.name : "未选择轨道")}）</button>
+        </div>
+        <p class="gate-hint">导出文件包含全部轨道的学习进度；导入会覆盖现有进度，请谨慎操作。</p>
+      </div>
+    </div>
+  </div>`;
+  $("#mask").addEventListener("click", (e) => { if (e.target.id === "mask") closeModal(); });
+  $("#mclose").addEventListener("click", closeModal);
+  $("#expBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(S, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `learnos-backup-${fmtDate(Date.now())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast("备份已开始下载");
+  });
+  $("#impFile").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const parsed = JSON.parse(rd.result);
+        if (!parsed || parsed.v !== 2 || !parsed.tracks) throw new Error("bad");
+        if (!confirm("导入将覆盖当前所有进度，确定吗？")) return;
+        S = fixState(parsed); save(); location.reload();
+      } catch (err) { toast("导入失败：文件格式不正确"); }
+    };
+    rd.readAsText(f);
+  });
+  $("#resetBtn").addEventListener("click", () => {
+    if (!T) return;
+    if (!confirm(`确定清空「${T.meta.name}」的全部学习进度吗？此操作不可恢复。`)) return;
+    S.tracks[CUR] = defaultTrackState(); save(); location.reload();
+  });
+}
+
+/* ---------------- ⌨ 全局快捷键 ---------------- */
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === "k") { e.preventDefault(); openSearch(); return; }
+  if (e.key === "Escape") {
+    if ($("#gatePwd")) return; // 门禁页不允许 Esc 关闭
+    if ($("#modalRoot").childNodes.length) closeModal();
+    return;
+  }
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (!S || !T) return;
+  const low = String(e.key).toLowerCase();
+  const pick = ["a", "b", "c", "d"].indexOf(low) > -1 ? ["a", "b", "c", "d"].indexOf(low) : ["1", "2", "3", "4"].indexOf(e.key);
+  if (QZ && QZ.running) {
+    if (pick > -1) { const o = $$("#view .opt")[pick]; if (o && !o.disabled) o.click(); }
+    else if (e.key === "Enter" && e.target.id !== "qzNext") { const n = $("#qzNext"); if (n && !n.disabled) n.click(); }
+  } else if (EX && EX.running) {
+    if (pick > -1 && EX.answers[EX.i] === undefined) { const o = $$("#view .opt")[pick]; if (o) o.click(); }
+    else if (low === "f") { const fl = $("#exFlag"); if (fl) fl.click(); }
+    else if (e.key === "ArrowLeft") { const p = $("#exPrev"); if (p && !p.disabled) p.click(); }
+    else if (e.key === "ArrowRight") { const n = $("#exNext"); if (n && !n.disabled) n.click(); }
+  }
+});
 
 /* ============================================================
    🔐 登录门禁（加密保险库）

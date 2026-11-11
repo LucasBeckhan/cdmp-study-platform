@@ -441,3 +441,19 @@ option { background: var(--bg-2); }
 .gate-hint { font-size: 11.5px; color: var(--dim); margin-top: 10px; line-height: 1.7; }
 .shake { animation: shake 0.4s; }
 @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-7px); } 75% { transform: translateX(7px); } }
+
+/* ---------- 🔍 搜索 / ⚙ 数据 / 🔥 热力图（v2.1） ---------- */
+.search-results { margin-top: 14px; max-height: 46vh; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.sr-group { font-size: 12px; color: var(--dim); letter-spacing: 0.08em; margin-top: 6px; }
+.sr-item { display: block; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); transition: border-color 0.2s; }
+.sr-item:hover { border-color: rgba(34, 211, 238, 0.5); }
+.sr-title { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sr-sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.7; }
+.heatmap { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); gap: 3.5px; overflow-x: auto; padding: 4px 2px; }
+.hm-cell { width: 11px; height: 11px; border-radius: 3px; background: rgba(148, 163, 184, 0.13); }
+.hm-cell.l1 { background: rgba(34, 211, 238, 0.3); }
+.hm-cell.l2 { background: rgba(34, 211, 238, 0.55); }
+.hm-cell.l3 { background: rgba(59, 130, 246, 0.8); }
+.hm-cell.l4 { background: var(--grad); box-shadow: 0 0 6px rgba(34, 211, 238, 0.55); }
+.hm-legend { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dim); margin-top: 8px; }
+.hm-legend .hm-cell { width: 10px; height: 10px; }
