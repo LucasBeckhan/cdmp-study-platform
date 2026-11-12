@@ -862,7 +862,6 @@ function vResources(view) {
    ============================================================ */
 function vTips(view) {
   const Tt = T.tips || { examFacts: [], strategy: [], memory: [] };
-  const mini = (PLAT().general || {}).miniappCost || [];
   view.innerHTML = `
     <div class="grid-2" style="margin-bottom:18px">
       <div class="card">
@@ -882,16 +881,7 @@ function vTips(view) {
         ${Tt.memory.map((m, i) => `<div class="tip-card"><span class="tip-num">MEMO-${String(i + 1).padStart(2, "0")}</span><h4>${esc(m[0])}</h4><p>${esc(m[1])}</p></div>`).join("")}
       </div>
     </div>
-    ${mini.length ? `
-    <div class="card">
-      <h3 class="card-title">平台形态选型：网页版 vs 小程序（费用对比）</h3>
-      <p class="summary-text" style="margin-bottom:14px">结论：<b style="color:var(--txt)">当前网页版部署在 GitHub Pages 完全 0 成本</b>；若未来要做微信小程序，费用如下：</p>
-      <table class="table">
-        <tr><th>项目</th><th>网页版（本平台）</th><th>微信小程序</th></tr>
-        ${mini.map((r) => `<tr><td>${esc(r[0])}</td><td style="color:var(--green)">${r[1]}</td><td>${r[2]}</td></tr>`).join("")}
-      </table>
-      <div class="callout good" style="margin-top:14px"><span class="co-ico">💡</span><span><b>建议：</b>先用网页版跑通全部学习闭环（0 成本）。若确有小程序需求，个人主体可免费注册（刷题/展示类功能够用）；如需企业认证（¥300/年）+ 备案域名服务器（约 ¥100-300/年），可基于本平台代码用 uni-app/Taro 低成本改造。</span></div>
-    </div>` : ""}`;
+    `;
 }
 
 /* ============================================================

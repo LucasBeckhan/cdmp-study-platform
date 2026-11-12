@@ -1,10 +1,10 @@
 /* LearnOS Service Worker — PWA 离线学习
    策略：导航/保险库 → 网络优先（保证更新及时），样式/脚本 → 网络优先，其余同源静态 → 缓存优先；
    /api/* 永不缓存。 */
-const VER = "learnos-v3.4.1-apple";
+const VER = "learnos-v3.4.2-apple";
 const PRECACHE = [
   "./", "./index.html", "./css/style.css?v=apple-20261112",
-  "./js/core.js", "./js/crypto.js", "./js/cloud.js", "./js/app.js?v=apple-20261112",
+  "./js/core.js", "./js/crypto.js", "./js/cloud.js", "./js/app.js?v=apple-20261112-tips",
   "./data/vault.js", "./manifest.webmanifest", "./icon.svg",
   "./icon-180.png", "./icon-192.png", "./icon-512.png",
 ];
