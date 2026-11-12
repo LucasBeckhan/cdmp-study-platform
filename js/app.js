@@ -117,9 +117,9 @@ function renderTopbar() {
     }).join("");
     right.push(`<select class="input" id="trackSel" style="padding:6px 10px;font-size:12.5px" title="切换轨道">${opts}</select>`);
   }
-  right.push(`<button class="btn btn-ghost btn-sm" id="searchBtn" title="全局搜索（Ctrl+K）">🔍</button>`);
-  right.push(`<button class="btn btn-ghost btn-sm" id="dataBtn" title="备份与恢复">⚙</button>`);
-  right.push(`<button class="btn btn-ghost btn-sm" id="logoutBtn" title="退出登录">🔒 退出</button>`);
+  right.push(`<button class="btn btn-ghost btn-sm" id="searchBtn" title="全局搜索（Ctrl+K）" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg></button>`);
+  right.push(`<button class="btn btn-ghost btn-sm" id="dataBtn" title="备份与恢复" aria-label="备份与恢复"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg></button>`);
+  right.push(`<button class="btn btn-ghost btn-sm" id="logoutBtn" title="退出登录">退出</button>`);
   $("#topbarRight").innerHTML = right.join(" ");
   const sel = $("#trackSel");
   if (sel) sel.addEventListener("change", () => { location.hash = "#/" + sel.value + "/home"; });
@@ -176,22 +176,22 @@ function renderHub() {
   closeSidebar();
   $("#view").innerHTML = `
   <div class="hero card">
-    <span class="hero-kicker">LEARNOS · PERSONAL LEARNING OS</span>
-    <h1 class="hero-title">一个平台，<em>精通</em>每一场硬仗</h1>
-    <p class="hero-sub">按「轨道」组织你的认证与技能学习——每一轨都是 计划 → 知识精讲 → 刷题 → 模考 的完整闭环。数据只存在你自己的浏览器里，随时可以新增下一条轨道。</p>
+    <span class="hero-kicker">YOUR PERSONAL LEARNING SPACE</span>
+    <h1 class="hero-title">专注学习。<em>不断进阶。</em></h1>
+    <p class="hero-sub">从计划到掌握，一切井然有序。将知识、练习与进度汇聚一处，专注每一次进步。</p>
     <div class="chip-row">
-      <span class="chip">🗂 ${active.length} 条轨道进行中</span>
-      <span class="chip">✎ 累计刷题 ${allDone}</span>
-      <span class="chip">⚡ 待消灭错题 ${allWrong}</span>
-      <span class="chip">◎ 模考 ${allExams} 次</span>
-      <a class="chip chip-hi" href="#/wrongbook">⚡ 错题中心 ${allWrong}</a>
+      <span class="chip">${active.length} 条轨道进行中</span>
+      <span class="chip">累计刷题 ${allDone}</span>
+      <span class="chip">待回顾错题 ${allWrong}</span>
+      <span class="chip">模考 ${allExams} 次</span>
+      <a class="chip chip-hi" href="#/wrongbook">错题中心 ${allWrong}</a>
     </div>
   </div>
   <div class="grid-2" style="margin-top:18px">
     ${active.map((id) => {
       const m = TR[id].meta; const s = trackStats(id);
       return `
-      <a class="card k-card" style="--kc:${m.color || "#22d3ee"}" href="#/${id}/home">
+      <a class="card k-card" style="--kc:${m.color || "#0071e3"}" href="#/${id}/home">
         <span class="k-ico">${m.icon || "🎓"}</span>
         <h3>${esc(m.name)} <span style="font-size:12px;color:var(--dim);font-weight:400">${esc(m.full || "")}</span></h3>
         <p>${esc(m.tagline || "")}</p>
@@ -203,11 +203,11 @@ function renderHub() {
     ${soon.map((id) => {
       const m = (PLAT().comingSoon || {})[id];
       return `
-      <div class="card k-card" style="--kc:${m.color || "#64748b"};opacity:.55;cursor:default">
+      <div class="card k-card" style="--kc:${m.color || "#6e6e73"};cursor:default">
         <span class="k-ico">${m.icon}</span>
         <h3>${esc(m.name)} <span class="badge">建设中</span></h3>
         <p>${esc(m.tagline || "")}</p>
-        <div class="k-foot"><span>🚧 内容生产中 · 敬请期待</span></div>
+        <div class="k-foot"><span>即将推出 · 敬请期待</span></div>
       </div>`;
     }).join("")}
   </div>`;
@@ -334,11 +334,11 @@ function goalRingSVG(cnt, goal) {
   const ratio = Math.min(1, goal ? cnt / goal : 0);
   const dash = (ratio * 264).toFixed(1);
   return `<svg width="110" height="110" viewBox="0 0 110 110" role="img" aria-label="今日目标 ${cnt}/${goal}">
-    <circle cx="55" cy="55" r="42" fill="none" stroke="rgba(148,163,184,.15)" stroke-width="9"/>
-    <circle cx="55" cy="55" r="42" fill="none" stroke="url(#gg)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${dash} 264" transform="rotate(-90 55 55)"/>
-    <defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
-    <text x="55" y="52" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="800" font-family="ui-monospace,monospace">${cnt}</text>
-    <text x="55" y="72" text-anchor="middle" fill="#8fa0b8" font-size="11">/ ${goal} 题</text>
+    <circle cx="55" cy="55" r="42" fill="none" stroke="rgba(120,120,128,.16)" stroke-width="9"/>
+    <circle cx="55" cy="55" r="42" fill="none" stroke="#0071e3" stroke-width="9" stroke-linecap="round" stroke-dasharray="${dash} 264" transform="rotate(-90 55 55)"/>
+
+    <text x="55" y="52" text-anchor="middle" fill="#1d1d1f" font-size="20" font-weight="800" font-family="ui-monospace,monospace">${cnt}</text>
+    <text x="55" y="72" text-anchor="middle" fill="#6e6e73" font-size="11">/ ${goal} 题</text>
   </svg>`;
 }
 function heatmapHTML() {
@@ -768,12 +768,11 @@ function renderExamResult(view) {
       <h3 class="card-title" style="justify-content:center">模考成绩单</h3>
       <div class="score-wrap">
         <svg width="170" height="170" viewBox="0 0 170 170" role="img" aria-label="得分 ${s} 分">
-          <circle cx="85" cy="85" r="72" fill="none" stroke="rgba(148,163,184,.15)" stroke-width="12"/>
-          <circle cx="85" cy="85" r="72" fill="none" stroke="url(#sg)" stroke-width="12" stroke-linecap="round"
+          <circle cx="85" cy="85" r="72" fill="none" stroke="rgba(120,120,128,.16)" stroke-width="12"/>
+          <circle cx="85" cy="85" r="72" fill="none" stroke="#0071e3" stroke-width="12" stroke-linecap="round"
             stroke-dasharray="${(s / 100 * 452.4).toFixed(1)} 452.4" transform="rotate(-90 85 85)"/>
-          <defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
-          <text x="85" y="95" text-anchor="middle" fill="#e2e8f0" font-size="40" font-weight="800" font-family="ui-monospace,monospace">${s}</text>
+
+          <text x="85" y="95" text-anchor="middle" fill="#1d1d1f" font-size="40" font-weight="800" font-family="ui-monospace,monospace">${s}</text>
         </svg>
         <span class="score-tag ${s >= EXM.pass ? "pass" : "fail"}">${s >= EXM.pass ? "✓" : "✗"} 及格（${EXM.pass}） · 目标 ${EXM.target} · 冲刺 ${EXM.stretch}</span>
       </div>
@@ -1235,26 +1234,26 @@ function renderGate(errMsg, mode) {
   <div class="modal-mask">
     <div class="gate-card ${errMsg ? "shake" : ""}" role="dialog" aria-modal="true" aria-label="访问门禁">
       <div class="gate-logo">
-        <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><defs><linearGradient id="glg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><circle cx="32" cy="32" r="27" fill="none" stroke="url(#glg)" stroke-width="5"/><circle cx="32" cy="32" r="7" fill="url(#glg)"/><path d="M32 9v11M32 44v11M9 32h11M44 32h11" stroke="url(#glg)" stroke-width="5" stroke-linecap="round"/></svg>
+        <img src="icon.svg" width="34" height="34" alt="">
         <strong>LearnOS</strong>
       </div>
-      <h2>私有学习平台</h2>
-      ${cloudOn ? `<div class="auth-tabs">${tabBtn("account", "👤 账号登录")}${tabBtn("pass", "🔑 内容密码")}</div>`
+      <h2>你的学习，从这里开始。</h2>
+      ${cloudOn ? `<div class="auth-tabs">${tabBtn("account", "账号登录")}${tabBtn("pass", "内容密码")}</div>`
                 : `<p class="gate-sub">内容已端到端加密，请输入访问密码解锁</p>`}
       <div id="tab-account" ${mode === "account" ? "" : "hidden"}>
         <p class="gate-sub">登录后自动同步多设备进度，并自动解锁内容</p>
         <input type="email" id="authEmail" class="input" placeholder="邮箱" autocomplete="username">
         <input type="password" id="authPass" class="input" placeholder="密码（≥8 位，含字母和数字）" autocomplete="current-password">
-        <button class="btn btn-primary" id="authLogin" style="width:100%">👤 登录</button>
-        <button class="btn btn-ghost" id="authRegister" style="width:100%;margin-top:10px">✨ 注册新账号</button>
+        <button class="btn btn-primary" id="authLogin" style="width:100%">登录</button>
+        <button class="btn btn-ghost" id="authRegister" style="width:100%;margin-top:10px">创建账号</button>
       </div>
       <div id="tab-pass" ${mode === "pass" ? "" : "hidden"}>
-        <input type="password" id="gatePwd" class="input" placeholder="访 问 密 码" autocomplete="current-password">
+        <input type="password" id="gatePwd" class="input" placeholder="访问密码" autocomplete="current-password">
         <label class="gate-remember"><input type="checkbox" id="gateRemember" checked> 记住此设备，下次免输入</label>
-        <button class="btn btn-primary" id="gateBtn">🔓 解锁平台</button>
+        <button class="btn btn-primary" id="gateBtn">解锁学习空间</button>
       </div>
       <div class="gate-err" id="gateErr" role="alert">${errMsg ? esc(errMsg) : ""}</div>
-      <p class="gate-hint">🔒 ${cloudOn ? "账号用于云端同步；内容在本机解密，学习数据不向第三方泄露" : "密码仅用于在本地解密内容，不会发送到任何服务器"}</p>
+      <p class="gate-hint">${cloudOn ? "账号用于云端同步；内容在本机解密，学习数据不向第三方泄露" : "密码仅用于在本地解密内容，不会发送到任何服务器"}</p>
     </div>
   </div>`;
   $$(".auth-tab").forEach((b) => b.addEventListener("click", () => renderGate(null, b.dataset.tab)));

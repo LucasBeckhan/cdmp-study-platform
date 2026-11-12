@@ -66,7 +66,7 @@ LEARNOS_CONTENT_PASS=cdmp PORT=8787 npm start
 ```
 cdmp-study-platform/
 ├── index.html              # 应用壳（双模式门禁 + 轨道导航）
-├── css/style.css           # 深空科技风样式
+├── css/style.css           # Apple Style 浅色样式
 ├── js/
 │   ├── core.js             # 纯函数域逻辑（作答/统计/错题/洞察/搜索/状态迁移，Node 可测）
 │   ├── crypto.js           # 门禁加解密（PBKDF2 + AES-GCM，Node 可测）
