@@ -24,7 +24,7 @@ jobs:
           exit $fail
 
       - name: 单元测试（node:test）
-        run: node --test tests/
+        run: node --test tests/*.test.mjs
 
       - name: 仓库卫生（明文数据不入库 / 保险库无明文标记）
         run: |

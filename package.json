@@ -7,6 +7,6 @@
     "start": "node server/index.mjs",
     "build": "node tools/encrypt-data.mjs",
     "check": "node tools/encrypt-data.mjs --check-local",
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.mjs"
   }
 }
