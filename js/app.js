@@ -49,6 +49,11 @@ function daysLeft() {
 function loadTrack(tid) {
   const TR = TRACKS();
   if (!TR[tid]) return false;
+  if (CUR && CUR !== tid) {
+    QZ = null; FC = null;
+    if (EX && EX.timer) clearInterval(EX.timer);
+    EX = null;
+  }
   CUR = tid; T = TR[tid]; ST = getT(tid); S.current = tid; save();
   BANK = T.bank || [];
   REAL = ((window.TRACKS_REAL || {})[tid] || []).filter((q) => q && q.q && Array.isArray(q.opts) && q.opts.length >= 2 && typeof q.ans === "number");
@@ -73,19 +78,16 @@ function updateNav() {
 }
 
 /* ---------------- 路由 ---------------- */
-const VIEW_TITLES = { home: "学习首页", plan: "学习计划", knowledge: "知识体系", flashcards: "闪卡记忆", quiz: "章节刷题", exam: "模拟考试", resources: "资料纳管", tips: "备考攻略" };
-const VIEWS = Object.keys(VIEW_TITLES);
+const VIEW_TITLES = LearnOS.navigation.views;
 function router() {
-  if (S && !$("#gatePwd")) closeModal(); // 路由切换时关闭残留的临时弹窗（门禁除外）
-  const h = location.hash.replace(/^#\/?/, "");
-  if (!h || h === "hub" || h === "home") return renderHub();
-  if (h === "wrongbook") return renderWrongBook();
-  const parts = h.split("/").filter(Boolean);
-  const tid = parts[0];
-  if (!TRACKS()[tid]) return renderHub();
+  if (window.CDMP_VAULT && $(".gate-card")) return;
+  if (S) closeModal();
+  const route = LearnOS.navigation.resolve(location.hash, TRACKS(), S && S.current);
+  if (route.message) toast(route.message);
+  if (route.global === "hub") return renderHub();
+  if (route.global === "wrongbook") return renderWrongBook();
+  const { track: tid, view, arg } = route;
   if (CUR !== tid || !T) loadTrack(tid);
-  const view = VIEWS.includes(parts[1] || "") ? parts[1] : "home";
-  const arg = parts[2] || "";
   ST = getT(tid);
   $("#topbarTitle").textContent = `${T.meta.name} · ${VIEW_TITLES[view]}`;
   $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
@@ -163,7 +165,9 @@ function trackStats(tid) {
   return { st, doneQ, best, planPct: Core.planProgress(st.checks, totalDays), bankN, days: Object.keys(st.checks).length };
 }
 function renderHub() {
-  CUR = null; T = null; ST = null;
+  const preferred = S.current && TRACKS()[S.current] ? S.current : Object.keys(TRACKS())[0];
+  if (preferred && (!T || CUR !== preferred)) loadTrack(preferred);
+  updateNav();
   const TR = TRACKS();
   const order = (PLAT().tracksOrder || Object.keys(TR)).filter((id) => TR[id] || (PLAT().comingSoon || {})[id]);
   const active = order.filter((id) => TR[id]);
@@ -814,14 +818,14 @@ let curCat = "all";
 function vResources(view) {
   const R = T.resources || { cats: [] };
   const all = [];
-  (R.cats || []).forEach((c) => c.items.forEach((it) => all.push({ ...it, cat: c.name })));
+  (R.cats || []).forEach((c) => c.items.forEach((it) => all.push({ ...it, cat: c.name, catId: c.id })));
   const shown = curCat === "all" ? all : all.filter((it) => it.catId === curCat);
   const stCount = [0, 0, 0];
   all.forEach((it) => stCount[ST.resStatus[it.id] || 0]++);
   view.innerHTML = `
     <div class="disk-card" style="margin-bottom:18px">
-      <h3>▤ ${esc(T.meta.name)} 资料库 · 学习进度纳管</h3>
-      <p style="color:var(--muted);font-size:13.5px;line-height:1.8">${esc(R.privacy || "资料来源为私有渠道，平台不展示、不记录任何来源信息。")}按<b style="color:var(--txt)">「备考价值」</b>分级纳管：S 级必学核心 → A 级重要补充 → B/C 级拓展视野，无关文件已自动过滤。</p>
+      <h3>▤ ${esc(T.meta.name)} 学习资料清单</h3>
+      <p style="color:var(--muted);font-size:13.5px;line-height:1.8">${esc(R.privacy || "资料来源为私有渠道，平台不展示、不记录任何来源信息。")}此处仅提供资料目录与学习状态，不提供文件阅读或下载。点击右侧状态按钮可更新进度。按<b style="color:var(--txt)">「备考价值」</b>分级纳管：S 级必学核心 → A 级重要补充 → B/C 级拓展视野，无关文件已自动过滤。</p>
       <div class="disk-meta">
         <span class="chip mono">纳管条目 ${all.length} 项</span>
         <span class="chip mono">总进度 未开始 ${stCount[0]} · 学习中 ${stCount[1]} · 已完成 ${stCount[2]}</span>
@@ -987,7 +991,9 @@ function renderFlashEnd(view) {
    视图：全局错题中心（跨轨道）
    ============================================================ */
 function renderWrongBook() {
-  CUR = null; T = null; ST = null;
+  const preferred = S.current && TRACKS()[S.current] ? S.current : Object.keys(TRACKS())[0];
+  if (preferred && (!T || CUR !== preferred)) loadTrack(preferred);
+  updateNav();
   $("#topbarTitle").textContent = "错题中心";
   $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === "wrongbook"));
   closeSidebar();
@@ -1053,7 +1059,7 @@ function openAchievements(list) {
    ============================================================ */
 function closeModal() { $("#modalRoot").innerHTML = ""; }
 function openSearch() {
-  if (!T) return;
+  if (!T) { toast("请先选择一条可用学习轨道"); return; }
   $("#modalRoot").innerHTML = `
   <div class="modal-mask" id="mask">
     <div class="modal-card" role="dialog" aria-modal="true" aria-label="全局搜索">
