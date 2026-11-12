@@ -71,6 +71,7 @@ function loadTrack(tid) {
 function updateNav() {
   $$("#nav a").forEach((a) => {
     const v = a.dataset.view;
+    a.hidden = Boolean(T && T.meta.views && !["hub", "wrongbook", ...T.meta.views].includes(v));
     if (v === "hub") { a.href = "#/hub"; return; }
     if (v === "wrongbook") { a.href = "#/wrongbook"; return; }
     if (CUR) a.href = "#/" + CUR + "/" + v;
@@ -86,7 +87,9 @@ function router() {
   if (route.message) toast(route.message);
   if (route.global === "hub") return renderHub();
   if (route.global === "wrongbook") return renderWrongBook();
-  const { track: tid, view, arg } = route;
+  const { track: tid, arg } = route;
+  let view = route.view;
+  if (TRACKS()[tid].meta.views && !TRACKS()[tid].meta.views.includes(view)) { view = "quiz"; toast("英文专区提供练习、限时测试与学习指南"); }
   if (CUR !== tid || !T) loadTrack(tid);
   ST = getT(tid);
   $("#topbarTitle").textContent = `${T.meta.name} · ${VIEW_TITLES[view]}`;
@@ -150,7 +153,16 @@ function renderFoot() {
 function closeSidebar() { $("#sidebar").classList.remove("open"); $("#sidebarMask").classList.remove("show"); }
 $("#menuBtn").addEventListener("click", () => { $("#sidebar").classList.toggle("open"); $("#sidebarMask").classList.toggle("show"); });
 $("#sidebarMask").addEventListener("click", closeSidebar);
-$$("#nav a").forEach((a) => a.addEventListener("click", closeSidebar));
+$$("#nav a").forEach((a) => a.addEventListener("click", (event) => {
+  closeSidebar();
+  if (a.hash === location.hash) {
+    event.preventDefault();
+    if (QZ && QZ.done) QZ = null;
+    if (EX && EX.done) EX = null;
+    if (FC && FC.done) FC = null;
+    router();
+  }
+}));
 
 /* ============================================================
    视图：轨道中心（Hub）
@@ -223,6 +235,11 @@ function renderHub() {
    视图：轨道学习首页
    ============================================================ */
 function vHome(view) {
+  if (T.meta.practiceOnly) {
+    const stats = trackStats(CUR);
+    view.innerHTML = `<div class="hero card"><span class="hero-kicker">INDEPENDENT ENGLISH PRACTICE</span><h1 class="hero-title">Practice in English.<br><em>Build your confidence.</em></h1><p class="hero-sub">24 道原创入门练习，覆盖 12 个数据管理主题。题干、选项和解析均为英文。这是一组补充练习，不是官方试题或完整模拟卷。</p><div class="chip-row"><span class="chip">已作答 ${stats.doneQ} 次</span><span class="chip">待复习错题 ${ST.wrong.length}</span><span class="chip">独立记录学习进度</span></div><div class="cta-row"><a class="btn btn-primary" href="#/${CUR}/quiz">开始英文练习</a><a class="btn btn-ghost" href="#/${CUR}/exam">限时练习测试</a></div></div>`;
+    return;
+  }
   const days = Object.keys(ST.checks).length;
   const doneQ = Object.values(ST.chStats).reduce((s, c) => s + c.done, 0);
   const rightQ = Object.values(ST.chStats).reduce((s, c) => s + c.right, 0);
@@ -492,6 +509,7 @@ function vQuiz(view) {
   const doneQ = Object.values(ST.chStats).reduce((s, c) => s + c.done, 0);
   const rightQ = Object.values(ST.chStats).reduce((s, c) => s + c.right, 0);
   view.innerHTML = `
+    ${T.meta.practiceOnly ? `<div class="callout" style="margin-bottom:18px">Original English practice · 原创补充练习，非官方真题。答案及解析在作答后显示。</div>` : ""}
     <div class="grid-3" style="margin-bottom:18px">
       <div class="card stat-card"><div class="stat-num">${doneQ}</div><div class="stat-label">累计刷题</div></div>
       <div class="card stat-card"><div class="stat-num">${doneQ ? pct(rightQ, doneQ) + "%" : "—"}</div><div class="stat-label">总正确率</div></div>
@@ -658,16 +676,16 @@ function vExam(view) {
     <div class="grid-2">
       <div class="card">
         <h3 class="card-title">开始模拟考试</h3>
-        <p class="summary-text" style="margin-bottom:16px">全真模拟：从题库随机抽题，闭卷计时作答，<b style="color:var(--txt)">答完才显示对错</b>。及格线 ${EXM.pass}，目标 ${EXM.target}+，冲刺 ${EXM.stretch}。⌨ 键盘：A-D 作答 · F 标记 · ←/→ 翻题。</p>
+        <p class="summary-text" style="margin-bottom:16px">${T.meta.practiceOnly ? "英文限时练习（非官方模拟卷）" : "全真模拟"}：从题库随机抽题，闭卷计时作答，<b style="color:var(--txt)">答完才显示对错</b>。及格线 ${EXM.pass}，目标 ${EXM.target}+，冲刺 ${EXM.stretch}。⌨ 键盘：A-D 作答 · F 标记 · ←/→ 翻题。</p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
           ${REAL.length ? `<select class="input" id="exSrc">
             <option value="bank">📚 知识域题库（${BANK.length} 题）</option>
             <option value="real">🏆 真题卷（${REAL.length} 题）</option>
           </select>` : ""}
           <select class="input" id="exN">
-            <option value="30">30 题 · 约 ${Math.ceil(30 * (EXM.pace || 0.9))} 分钟</option>
-            <option value="50">50 题 · 约 ${Math.ceil(50 * (EXM.pace || 0.9))} 分钟</option>
-            <option value="${maxN}" selected>${maxN} 题 · ${Math.ceil(maxN * (EXM.pace || 0.9))} 分钟（全真）</option>
+            ${maxN > 10 ? `<option value="10">10 题 · 约 ${Math.ceil(10 * (EXM.pace || 0.9))} 分钟</option>` : ""}
+            ${maxN > 30 ? `<option value="30">30 题 · 约 ${Math.ceil(30 * (EXM.pace || 0.9))} 分钟</option>` : ""}
+            <option value="${maxN}" selected>${maxN} 题 · ${Math.ceil(maxN * (EXM.pace || 0.9))} 分钟（${T.meta.practiceOnly ? "练习" : "全真"}）</option>
           </select>
           <button class="btn btn-primary" id="exStart">▶ 开始考试</button>
         </div>
@@ -1216,6 +1234,10 @@ async function pullAndMerge() {
   } catch (e) { /* 离线容错：保留本地，待恢复后自动重推 */ }
 }
 function boot() {
+  window.TRACKS = window.TRACKS || {};
+  window.TRACKS['cdmp-en'] = LearnOS.englishPack;
+  const platform = PLAT();
+  window.PLATFORM = { ...platform, tracksOrder: [...new Set([...(platform.tracksOrder || Object.keys(TRACKS())), 'cdmp-en'])] };
   const TR = TRACKS();
   const target = S.current && TR[S.current] ? S.current : Object.keys(TR)[0] || null;
   if (target) loadTrack(target); else updateNav();

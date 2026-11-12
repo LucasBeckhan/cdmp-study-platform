@@ -588,3 +588,6 @@ body { line-height: 1.6; }
 }
 
 .topbar-right svg { width: 17px; height: 17px; }
+
+/* Scoped learning tracks expose only their supported pages. */
+.nav a[hidden] { display: none; }
